@@ -3,127 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Decidr - Chat & Juegos</title>
+    <title>Decidr MVP</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .chat-bg { background-color: #e5ddd5; }
-        .message-in { background-color: #fff; border-radius: 8px; margin-bottom: 8px; padding: 8px 12px; align-self: flex-start; max-width: 80%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
-        .message-out { background-color: #dcf8c6; border-radius: 8px; margin-bottom: 8px; padding: 8px 12px; align-self: flex-end; max-width: 80%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
-        .game-msg { border-left: 4px solid #34b7f1; font-weight: bold; background-color: #e3f2fd !important; text-align: center; align-self: center !important; }
+        .chat-bg { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
+        .bubble { max-width: 75%; padding: 8px 12px; border-radius: 12px; margin-bottom: 4px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); }
+        .bubble-in { background: white; align-self: flex-start; }
+        .bubble-out { background: #dcf8c6; align-self: flex-end; }
+        .system-msg { align-self: center; background: #e1f3fb; font-size: 0.8rem; padding: 4px 12px; border-radius: 15px; margin: 8px 0; }
     </style>
 </head>
-<body class="bg-gray-200 h-screen flex flex-col font-sans">
+<body class="h-screen flex flex-col font-sans text-gray-900 overflow-hidden">
 
-    <!-- Header -->
-    <header class="bg-[#075e54] text-white p-4 flex justify-between items-center shadow-md z-10">
-        <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center text-black font-bold">D</div>
+    <!-- Navbar -->
+    <nav class="bg-[#075e54] text-white p-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center text-black font-bold text-xl">D</div>
             <div>
-                <h1 class="font-bold">Grupo de Decisión</h1>
-                <p class="text-xs text-green-200">En línea</p>
+                <h1 class="font-bold leading-tight text-lg">Decidr Room</h1>
+                <p class="text-[10px] opacity-80">En línea ahora</p>
             </div>
         </div>
-        <div class="flex space-x-4 items-center">
-            <button onclick="toggleGameMenu()" class="hover:bg-[#128c7e] p-2 rounded-full transition">
-                <span class="text-2xl">🎲</span>
-            </button>
+        <div class="flex gap-4 items-center">
+            <button onclick="toggleMenu()" class="text-2xl hover:opacity-75 transition">🎲</button>
             <button class="text-xl">⋮</button>
         </div>
-    </header>
+    </nav>
 
     <!-- Menú de Juegos -->
-    <div id="gameMenu" class="hidden bg-white shadow-xl absolute right-4 top-16 z-50 rounded-lg p-2 w-48 border border-gray-300">
-        <button onclick="sendGame('dados')" class="w-full text-left p-3 hover:bg-gray-100 rounded flex items-center">
-            <span class="mr-3">🎲</span> Dados
+    <div id="gameMenu" class="hidden absolute right-4 top-16 bg-white shadow-2xl rounded-xl z-50 p-2 w-56 border border-gray-200">
+        <button onclick="sendAction('dados')" class="w-full text-left p-3 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
+            <span class="text-xl">🎲</span> Tirar Dado
         </button>
-        <button onclick="sendGame('moneda')" class="w-full text-left p-3 hover:bg-gray-100 rounded flex items-center">
-            <span class="mr-3">🪙</span> Moneda
-        </button>
-        <button onclick="openPapelitos()" class="w-full text-left p-3 hover:bg-gray-100 rounded flex items-center">
-            <span class="mr-3">📝</span> Papelitos
+        <button onclick="startPapelitos()" class="w-full text-left p-3 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
+            <span class="text-xl">📝</span> Iniciar Papelitos
         </button>
     </div>
 
-    <!-- Area de Chat -->
-    <main id="chatWindow" class="flex-1 overflow-y-auto p-4 flex flex-col chat-bg">
-        <!-- Los mensajes se inyectan aquí -->
+    <!-- Área de Chat -->
+    <main id="chat" class="flex-1 overflow-y-auto p-4 flex flex-col chat-bg space-y-1 bg-gray-100">
+        <div class="system-msg italic">Bienvenido a Decidr. Elegí un juego arriba.</div>
     </main>
 
-    <!-- Modal Papelitos -->
-    <div id="modalPapelitos" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
-        <div class="bg-white rounded-lg p-6 w-full max-w-sm">
-            <h2 class="text-xl font-bold mb-4 text-gray-800">Cargar Papelitos</h2>
-            <textarea id="papelitosText" class="w-full border p-2 rounded h-32 mb-4" placeholder="Escribí una opción por línea..."></textarea>
-            <div class="flex justify-end space-x-2">
-                <button onclick="closePapelitos()" class="px-4 py-2 text-gray-600">Cancelar</button>
-                <button onclick="sendPapelitos()" class="px-4 py-2 bg-[#25d366] text-white rounded font-bold">Sortear</button>
-            </div>
+    <!-- Widget Interactivo de Papelitos (Aparece al activar el juego) -->
+    <div id="papelitoInput" class="hidden bg-blue-50 p-3 border-t border-blue-200 flex flex-col gap-2 shadow-inner">
+        <p class="text-[10px] font-bold text-blue-700 tracking-widest uppercase">Modo Papelitos Activo</p>
+        <div class="flex gap-2">
+            <input id="paperText" type="text" class="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none" placeholder="Escribí tu opción...">
+            <button onclick="addPaper()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700">Meter</button>
+            <button onclick="drawPaper()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700">Sortear</button>
         </div>
     </div>
 
-    <!-- Footer Input -->
-    <footer class="bg-[#f0f0f0] p-3 flex items-center space-x-2">
-        <button class="text-gray-600 text-2xl">😊</button>
-        <input type="text" id="msgInput" class="flex-1 p-2 rounded-full border-none focus:outline-none px-4" placeholder="Escribe un mensaje">
-        <button onclick="sendText()" class="bg-[#128c7e] text-white p-2 rounded-full w-10 h-10 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M1.101 21.757L23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"></path></svg>
+    <!-- Footer de Entrada -->
+    <footer class="bg-[#f0f0f0] p-3 flex items-center gap-2 border-t border-gray-300">
+        <button class="text-gray-500 text-2xl px-1">😊</button>
+        <input id="input" type="text" class="flex-1 bg-white border-none rounded-full px-4 py-2 outline-none shadow-sm text-sm" placeholder="Escribe un mensaje">
+        <button onclick="sendText()" class="bg-[#128c7e] text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md hover:bg-[#075e54] transition">
+            <span class="text-lg">➤</span>
         </button>
     </footer>
 
     <script>
-        const myId = Math.floor(Math.random() * 1000).toString();
-        const ws = new WebSocket(`ws://localhost:8000/ws/${myId}`);
-        const chatWindow = document.getElementById('chatWindow');
-        const gameMenu = document.getElementById('gameMenu');
+        const clientId = Math.floor(Math.random() * 1000).toString();
+        const ws = new WebSocket(`ws://localhost:8000/ws/${clientId}`);
+        const chat = document.getElementById('chat');
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const isMe = data.client_id === myId;
-            addMessage(isMe ? "Yo" : data.sender, data.content, data.is_game, isMe);
-        };
-
-        function addMessage(sender, content, isGame, isMe) {
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
             const div = document.createElement('div');
-            if (isGame) {
-                div.className = "message-in game-msg w-full max-w-full my-2";
-            } else {
-                div.className = isMe ? "message-out" : "message-in";
+            
+            if(data.type === "chat") {
+                const isMe = data.sender.includes(clientId);
+                div.className = isMe ? "bubble bubble-out" : "bubble bubble-in";
+                div.innerHTML = `<span class="block text-[9px] font-bold opacity-40 uppercase mb-1">${data.sender}</span>${data.content}`;
+            } else if(data.type === "system") {
+                div.className = "system-msg";
+                div.innerText = data.content;
+                // Si el sistema dice que el pozo está abierto, mostramos el widget
+                if(data.content.includes("Pozo")) document.getElementById('papelitoInput').classList.remove('hidden');
+            } else if(data.type === "game_result") {
+                div.className = "system-msg bg-yellow-100 border border-yellow-300 text-yellow-900 font-bold py-3 text-base shadow-sm";
+                div.innerText = data.content;
             }
             
-            div.innerHTML = `<p class="text-[10px] font-bold text-gray-500 uppercase">${sender}</p>
-                             <p class="text-gray-800">${content}</p>`;
-            chatWindow.appendChild(div);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        };
 
         function sendText() {
-            const input = document.getElementById('msgInput');
-            if(!input.value.trim()) return;
-            ws.send(JSON.stringify({ type: "text", content: input.value }));
-            input.value = "";
+            const val = document.getElementById('input').value;
+            if(!val.trim()) return;
+            ws.send(JSON.stringify({type: "text", content: val}));
+            document.getElementById('input').value = "";
         }
 
-        function toggleGameMenu() { gameMenu.classList.toggle('hidden'); }
-        function sendGame(game) {
-            ws.send(JSON.stringify({ type: "game_cmd", game: game }));
-            gameMenu.classList.add('hidden');
+        function toggleMenu() { 
+            document.getElementById('gameMenu').classList.toggle('hidden'); 
         }
-        function openPapelitos() {
-            document.getElementById('modalPapelitos').classList.remove('hidden');
-            gameMenu.classList.add('hidden');
-        }
-        function closePapelitos() { document.getElementById('modalPapelitos').classList.add('hidden'); }
-        function sendPapelitos() {
-            const text = document.getElementById('papelitosText').value;
-            const options = text.split('\n').filter(o => o.trim() !== "");
-            if(options.length > 0) {
-                ws.send(JSON.stringify({ type: "game_cmd", game: "papelitos", options: options }));
-                document.getElementById('papelitosText').value = "";
-                closePapelitos();
-            }
+        
+        function sendAction(game) {
+            ws.send(JSON.stringify({type: "game_action", game: game}));
+            toggleMenu();
         }
 
-        document.getElementById('msgInput').addEventListener("keypress", (e) => {
+        function startPapelitos() {
+            ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "start"}));
+            toggleMenu();
+        }
+
+        function addPaper() {
+            const val = document.getElementById('paperText').value;
+            if(!val.trim()) return;
+            ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "add", option: val}));
+            document.getElementById('paperText').value = "";
+        }
+
+        function drawPaper() {
+            ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "draw"}));
+        }
+
+        // Enviar con Enter
+        document.getElementById('input').addEventListener("keypress", (e) => {
             if(e.key === "Enter") sendText();
         });
     </script>
