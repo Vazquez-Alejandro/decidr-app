@@ -3,94 +3,210 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Decidr MVP</title>
+    <title>Decidr</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .chat-bg { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
-        .bubble { max-width: 75%; padding: 8px 12px; border-radius: 12px; margin-bottom: 4px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); }
-        .bubble-in { background: white; align-self: flex-start; }
-        .bubble-out { background: #dcf8c6; align-self: flex-end; }
-        .system-msg { align-self: center; background: #e1f3fb; font-size: 0.8rem; padding: 4px 12px; border-radius: 15px; margin: 8px 0; }
+        .bubble { max-width: 80%; padding: 8px 14px; border-radius: 12px; margin-bottom: 6px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); word-break: break-word; }
+        .bubble-in { background: white; align-self: flex-start; border-top-left-radius: 4px; }
+        .bubble-out { background: #dcf8c6; align-self: flex-end; border-top-right-radius: 4px; }
+        .system-msg { align-self: center; background: #e1f3fb; font-size: 0.75rem; padding: 4px 14px; border-radius: 15px; margin: 8px 0; max-width: 90%; text-align: center; }
+        .game-result { align-self: center; background: #fef9c3; border: 1px solid #fde047; color: #854d0e; font-weight: 600; padding: 10px 18px; border-radius: 16px; margin: 8px 0; font-size: 0.9rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        #sidebar { transition: transform 0.3s ease; }
+        .room-active { background: #d1fae5 !important; border-left: 4px solid #059669; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        .ppt-btn { transition: all 0.15s; }
+        .ppt-btn:hover { transform: scale(1.05); }
+        .ppt-btn.selected { outline: 3px solid #059669; transform: scale(1.1); }
     </style>
 </head>
-<body class="h-screen flex flex-col font-sans text-gray-900 overflow-hidden">
+<body class="h-screen flex font-sans text-gray-900 overflow-hidden bg-gray-100">
 
-    <!-- Navbar -->
-    <nav class="bg-[#075e54] text-white p-3 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center text-black font-bold text-xl">D</div>
-            <div>
-                <h1 class="font-bold leading-tight text-lg">Decidr Room</h1>
-                <p class="text-[10px] opacity-80">En línea ahora</p>
+    <!-- ─── SIDEBAR ─── -->
+    <aside id="sidebar" class="w-72 bg-white border-r border-gray-200 flex flex-col shrink-0 hidden md:flex">
+        <div class="bg-[#075e54] text-white p-4 flex items-center justify-between">
+            <h1 class="font-bold text-lg">Decidr</h1>
+            <span class="text-xs opacity-75">beta</span>
+        </div>
+        <div class="p-3 border-b border-gray-200">
+            <input id="roomSearch" type="text" class="w-full bg-gray-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075e54]" placeholder="Buscar sala...">
+        </div>
+        <div id="roomList" class="flex-1 overflow-y-auto">
+            <div class="room-item room-active p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3" data-room="default_room">
+                <div class="w-12 h-12 bg-[#075e54] rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0">G</div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-semibold text-sm truncate">General</div>
+                    <div class="text-xs text-gray-500 truncate">Sala principal</div>
+                </div>
             </div>
         </div>
-        <div class="flex gap-4 items-center">
-            <button onclick="toggleMenu()" class="text-2xl hover:opacity-75 transition">🎲</button>
-            <button class="text-xl">⋮</button>
+        <div class="p-3 border-t border-gray-200">
+            <button onclick="showCreateRoom()" class="w-full bg-[#128c7e] text-white rounded-lg py-2 text-sm font-semibold hover:bg-[#075e54] transition">
+                + Nueva Sala
+            </button>
         </div>
-    </nav>
+    </aside>
 
-    <!-- Menú de Juegos -->
-    <div id="gameMenu" class="hidden absolute right-4 top-16 bg-white shadow-2xl rounded-xl z-50 p-2 w-56 border border-gray-200">
-        <button onclick="sendAction('dados')" class="w-full text-left p-3 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
-            <span class="text-xl">🎲</span> Tirar Dado
-        </button>
-        <button onclick="startPapelitos()" class="w-full text-left p-3 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
-            <span class="text-xl">📝</span> Iniciar Papelitos
-        </button>
-    </div>
+    <!-- ─── MAIN ─── -->
+    <div class="flex-1 flex flex-col max-w-full">
 
-    <!-- Área de Chat -->
-    <main id="chat" class="flex-1 overflow-y-auto p-4 flex flex-col chat-bg space-y-1 bg-gray-100">
-        <div class="system-msg italic">Bienvenido a Decidr. Elegí un juego arriba.</div>
-    </main>
+        <!-- Navbar -->
+        <nav class="bg-[#075e54] text-white px-4 py-2 flex items-center justify-between shrink-0">
+            <div class="flex items-center gap-3 min-w-0">
+                <button onclick="toggleSidebar()" class="md:hidden text-xl mr-1">☰</button>
+                <div class="w-9 h-9 bg-gray-300 rounded-full flex items-center justify-center text-black font-bold shrink-0">G</div>
+                <div class="min-w-0">
+                    <h1 class="font-bold leading-tight text-sm truncate" id="roomTitle">General</h1>
+                    <p class="text-[10px] opacity-80" id="roomStatus">Conectado</p>
+                </div>
+            </div>
+            <div class="flex gap-2 items-center relative">
+                <button onclick="toggleMenu()" class="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 transition text-sm font-semibold flex items-center gap-1.5">
+                    <span>🎮</span> Juegos
+                </button>
+                <button class="text-xl px-1">⋮</button>
 
-    <!-- Widget Interactivo de Papelitos (Aparece al activar el juego) -->
-    <div id="papelitoInput" class="hidden bg-blue-50 p-3 border-t border-blue-200 flex flex-col gap-2 shadow-inner">
-        <p class="text-[10px] font-bold text-blue-700 tracking-widest uppercase">Modo Papelitos Activo</p>
-        <div class="flex gap-2">
-            <input id="paperText" type="text" class="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none" placeholder="Escribí tu opción...">
-            <button onclick="addPaper()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700">Meter</button>
-            <button onclick="drawPaper()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700">Sortear</button>
+                <!-- Menú de Juegos -->
+                <div id="gameMenu" class="hidden absolute right-0 top-10 bg-white shadow-2xl rounded-xl z-50 p-1.5 w-64 border border-gray-200">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Decisiones</div>
+                    <button onclick="sendAction('dados')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
+                        <span class="text-2xl">🎲</span>
+                        <div><div class="font-semibold text-sm">Dado más alto</div><div class="text-[10px] text-gray-400">Tirá el dado, que gane el mejor</div></div>
+                    </button>
+                    <button onclick="sendAction('palito')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
+                        <span class="text-2xl">🪵</span>
+                        <div><div class="font-semibold text-sm">Palito más largo</div><div class="text-[10px] text-gray-400">Cada uno saca, se compara</div></div>
+                    </button>
+                    <button onclick="startPPT()" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
+                        <span class="text-2xl">✊</span>
+                        <div><div class="font-semibold text-sm">Piedra, Papel o Tijera</div><div class="text-[10px] text-gray-400">Duelo 1 vs 1</div></div>
+                    </button>
+                    <button onclick="startPapelitos()" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
+                        <span class="text-2xl">📝</span>
+                        <div><div class="font-semibold text-sm">Papelitos</div><div class="text-[10px] text-gray-400">Todos meten opciones, se sortea</div></div>
+                    </button>
+                    <button onclick="sendAction('palabras')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
+                        <span class="text-2xl">🔤</span>
+                        <div><div class="font-semibold text-sm">Palabras al azar</div><div class="text-[10px] text-gray-400">Sacá una palabra del pool</div></div>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Chat Area -->
+        <main id="chat" class="flex-1 overflow-y-auto p-4 flex flex-col chat-bg space-y-1">
+            <div class="system-msg italic">Bienvenido a Decidr. Elegí un juego arriba 🎮</div>
+        </main>
+
+        <!-- Widget Papelitos -->
+        <div id="papelitoInput" class="hidden bg-blue-50 px-4 py-3 border-t border-blue-200 flex flex-col gap-2 shadow-inner">
+            <p class="text-[10px] font-bold text-blue-700 tracking-widest uppercase">📝 Modo Papelitos</p>
+            <div class="flex gap-2">
+                <input id="paperText" type="text" class="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none" placeholder="Escribí tu opción...">
+                <button onclick="addPaper()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700">Meter</button>
+                <button onclick="drawPaper()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700">Sortear</button>
+            </div>
         </div>
-    </div>
 
-    <!-- Footer de Entrada -->
-    <footer class="bg-[#f0f0f0] p-3 flex items-center gap-2 border-t border-gray-300">
-        <button class="text-gray-500 text-2xl px-1">😊</button>
-        <input id="input" type="text" class="flex-1 bg-white border-none rounded-full px-4 py-2 outline-none shadow-sm text-sm" placeholder="Escribe un mensaje">
-        <button onclick="sendText()" class="bg-[#128c7e] text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md hover:bg-[#075e54] transition">
-            <span class="text-lg">➤</span>
-        </button>
-    </footer>
+        <!-- Widget PPT -->
+        <div id="pptInput" class="hidden bg-purple-50 px-4 py-3 border-t border-purple-200 flex flex-col gap-2 shadow-inner">
+            <p class="text-[10px] font-bold text-purple-700 tracking-widest uppercase">✊ Piedra, Papel o Tijera</p>
+            <div class="flex gap-2 justify-center">
+                <button onclick="pptChoose('piedra')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20">
+                    <span class="text-3xl">✊</span>
+                    <span class="text-[10px] font-semibold text-purple-700">Piedra</span>
+                </button>
+                <button onclick="pptChoose('papel')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20">
+                    <span class="text-3xl">✋</span>
+                    <span class="text-[10px] font-semibold text-purple-700">Papel</span>
+                </button>
+                <button onclick="pptChoose('tijera')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20">
+                    <span class="text-3xl">✌️</span>
+                    <span class="text-[10px] font-semibold text-purple-700">Tijera</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Widget Palabras -->
+        <div id="palabrasInput" class="hidden bg-orange-50 px-4 py-3 border-t border-orange-200 flex flex-col gap-2 shadow-inner">
+            <p class="text-[10px] font-bold text-orange-700 tracking-widest uppercase">🔤 Pool de Palabras</p>
+            <div class="flex gap-2">
+                <button onclick="sendAction('palabras')" class="flex-1 bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-700">Sacar palabra</button>
+                <button onclick="startReassign()" class="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-600">Asignar a...</button>
+            </div>
+            <div id="reassignRow" class="hidden flex gap-2">
+                <input id="reassignTarget" type="text" class="flex-1 border border-orange-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400 outline-none" placeholder="Nombre de quien recibe...">
+                <button onclick="doReassign()" class="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-700">Asignar</button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-[#f0f0f0] px-4 py-2 flex items-center gap-2 border-t border-gray-300">
+            <button class="text-gray-500 text-2xl px-1">😊</button>
+            <input id="input" type="text" class="flex-1 bg-white border-none rounded-full px-4 py-2.5 outline-none shadow-sm text-sm" placeholder="Escribe un mensaje">
+            <button onclick="sendText()" class="bg-[#128c7e] text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md hover:bg-[#075e54] transition shrink-0">
+                <span class="text-lg">➤</span>
+            </button>
+        </footer>
+    </div>
 
     <script>
-        const clientId = Math.floor(Math.random() * 1000).toString();
-        const ws = new WebSocket(`ws://localhost:8000/ws/${clientId}`);
+        const clientId = "User_" + Math.random().toString(36).slice(2, 6);
         const chat = document.getElementById('chat');
+        let currentRoom = 'default_room';
+        let pptChosen = false;
+        let ws;
 
-        ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
+        function connectWs() {
+            const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+            ws = new WebSocket(`${protocol}//${location.host}/ws/${clientId}`);
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                appendMessage(data);
+            };
+            ws.onclose = () => {
+                setTimeout(connectWs, 3000);
+            };
+        }
+        connectWs();
+
+        function appendMessage(data) {
             const div = document.createElement('div');
-            
+
             if(data.type === "chat") {
-                const isMe = data.sender.includes(clientId);
-                div.className = isMe ? "bubble bubble-out" : "bubble bubble-in";
-                div.innerHTML = `<span class="block text-[9px] font-bold opacity-40 uppercase mb-1">${data.sender}</span>${data.content}`;
+                const isMe = data.client_id === clientId;
+                div.className = `bubble ${isMe ? 'bubble-out' : 'bubble-in'}`;
+                if(!isMe) {
+                    div.innerHTML = `<span class="block text-[9px] font-bold text-[#075e54] uppercase mb-1">${data.sender}</span>${escapeHtml(data.content)}`;
+                } else {
+                    div.innerText = data.content;
+                }
             } else if(data.type === "system") {
                 div.className = "system-msg";
                 div.innerText = data.content;
-                // Si el sistema dice que el pozo está abierto, mostramos el widget
                 if(data.content.includes("Pozo")) document.getElementById('papelitoInput').classList.remove('hidden');
             } else if(data.type === "game_result") {
-                div.className = "system-msg bg-yellow-100 border border-yellow-300 text-yellow-900 font-bold py-3 text-base shadow-sm";
-                div.innerText = data.content;
+                div.className = "game-result";
+                div.innerHTML = data.content.replace(/\n/g, '<br>');
+                // Show/hide widgets based on game
+                if(data.content.includes("✊✋✌️") || data.content.includes("empate") || data.content.includes("gana")) {
+                    document.getElementById('pptInput').classList.add('hidden');
+                    pptChosen = false;
+                }
             }
-            
+
             chat.appendChild(div);
             chat.scrollTop = chat.scrollHeight;
-        };
+        }
 
+        function escapeHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+        // ─── Text ───
         function sendText() {
             const val = document.getElementById('input').value;
             if(!val.trim()) return;
@@ -98,18 +214,49 @@
             document.getElementById('input').value = "";
         }
 
-        function toggleMenu() { 
-            document.getElementById('gameMenu').classList.toggle('hidden'); 
+        document.getElementById('input').addEventListener("keypress", (e) => {
+            if(e.key === "Enter") sendText();
+        });
+
+        // ─── Games Menu ───
+        function toggleMenu() {
+            document.getElementById('gameMenu').classList.toggle('hidden');
         }
-        
+
         function sendAction(game) {
             ws.send(JSON.stringify({type: "game_action", game: game}));
             toggleMenu();
+            if(game === 'papelitos') startPapelitos();
+            if(game === 'palito') {
+                // For palito, after draw, we need a result button
+                showPalitoResultBtn();
+            }
+            if(game === 'ppt') startPPT();
+            if(game === 'palabras') {
+                document.getElementById('palabrasInput').classList.remove('hidden');
+                document.getElementById('reassignRow').classList.add('hidden');
+            }
         }
 
+        // ─── Palito ───
+        function showPalitoResultBtn() {
+            const div = document.createElement('div');
+            div.className = "system-msg";
+            div.innerHTML = `<button onclick="revealPalito()" class="bg-amber-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-amber-600 shadow">🏆 Revelar resultados</button>`;
+            div.style.cursor = 'pointer';
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function revealPalito() {
+            ws.send(JSON.stringify({type: "game_action", game: "palito_result"}));
+        }
+
+        // ─── Papelitos ───
         function startPapelitos() {
             ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "start"}));
             toggleMenu();
+            document.getElementById('papelitoInput').classList.remove('hidden');
         }
 
         function addPaper() {
@@ -123,10 +270,68 @@
             ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "draw"}));
         }
 
-        // Enviar con Enter
-        document.getElementById('input').addEventListener("keypress", (e) => {
-            if(e.key === "Enter") sendText();
-        });
+        // ─── PPT ───
+        function startPPT() {
+            toggleMenu();
+            document.getElementById('pptInput').classList.remove('hidden');
+            pptChosen = false;
+        }
+
+        function pptChoose(option) {
+            if(pptChosen) return;
+            pptChosen = true;
+            ws.send(JSON.stringify({type: "game_action", game: "ppt", option: option}));
+            document.querySelectorAll('.ppt-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelector(`.ppt-btn[onclick*="${option}"]`)?.classList.add('selected');
+        }
+
+        // ─── Palabras ───
+        function startReassign() {
+            document.getElementById('reassignRow').classList.toggle('hidden');
+        }
+
+        function doReassign() {
+            const target = document.getElementById('reassignTarget').value.trim();
+            if(!target) return;
+            ws.send(JSON.stringify({type: "game_action", game: "palabras", action: "reassign", target: target}));
+            document.getElementById('reassignTarget').value = "";
+            document.getElementById('reassignRow').classList.add('hidden');
+        }
+
+        // ─── Sidebar toggle (mobile) ───
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            sb.classList.toggle('hidden');
+            sb.classList.toggle('flex');
+        }
+
+        // ─── Create Room ───
+        function showCreateRoom() {
+            const name = prompt("Nombre de la nueva sala:");
+            if(name && name.trim()) {
+                const list = document.getElementById('roomList');
+                const div = document.createElement('div');
+                div.className = 'room-item p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3';
+                div.dataset.room = name.trim().toLowerCase().replace(/\s+/g, '_');
+                div.innerHTML = `
+                    <div class="w-12 h-12 bg-[#075e54] rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0">${name[0].toUpperCase()}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold text-sm truncate">${name}</div>
+                        <div class="text-xs text-gray-500 truncate">Sala creada</div>
+                    </div>
+                `;
+                div.onclick = () => switchRoom(div.dataset.room, name, div);
+                list.appendChild(div);
+            }
+        }
+
+        function switchRoom(roomId, roomName, el) {
+            currentRoom = roomId;
+            document.querySelectorAll('.room-item').forEach(r => r.classList.remove('room-active'));
+            el.classList.add('room-active');
+            document.getElementById('roomTitle').textContent = roomName || roomId;
+            chat.innerHTML = `<div class="system-msg italic">Cambiaste a ${roomName || roomId}</div>`;
+        }
     </script>
 </body>
 </html>
