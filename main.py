@@ -1,22 +1,37 @@
 import os
 import random
 import json
+import asyncio
+import datetime
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from database import SessionLocal, MessageDB, UserDB, ChatDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, ScheduledMessageDB, engine, Base
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
 INDEX_HTML = Path(__file__).parent / "index.html"
+STATIC_DIR = Path(__file__).parent / "static"
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/")
 async def get_index():
     return HTMLResponse(INDEX_HTML.read_text(encoding="utf-8"))
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/"},
+    )
 
 PALABRAS_POOL = [
     "Cerveza", "Hielo", "Carbon", "Carne", "Ensalada", "Pan",
@@ -43,6 +58,8 @@ class ConnectionManager:
             db.commit()
         db.close()
         self.user_names[client_id] = client_id
+        await self.deliver_pending(client_id)
+        await broadcast_user_list()
         await self.broadcast({
             "type": "system",
             "content": f"🟢 {client_id} se conectó"
@@ -61,7 +78,67 @@ class ConnectionManager:
         if client_id in self.active_connections:
             await self.active_connections[client_id].send_json(message_dict)
 
+    async def deliver_pending(self, client_id: str):
+        name = self.user_names.get(client_id)
+        if not name:
+            return
+        db = SessionLocal()
+        try:
+            pending = db.query(ScheduledMessageDB).filter(
+                ScheduledMessageDB.sent == False,
+                ScheduledMessageDB.target_username == name
+            ).all()
+            for msg in pending:
+                await self.send_to(client_id, {
+                    "type": "scheduled",
+                    "content": msg.content,
+                    "sender": msg.sender_name,
+                    "target": msg.target_username,
+                    "scheduled_id": msg.id
+                })
+                msg.sent = True
+            db.commit()
+        finally:
+            db.close()
+
 manager = ConnectionManager()
+
+
+# ─── Usuarios activos ─────────────────────────────────────────────
+async def broadcast_user_list():
+    names = list(manager.user_names.values())
+    await manager.broadcast({"type": "user_list", "users": names})
+
+
+# ─── Programación de mensajes ─────────────────────────────────────
+async def scheduled_message_checker():
+    while True:
+        try:
+            db = SessionLocal()
+            now = datetime.datetime.utcnow()
+            due = db.query(ScheduledMessageDB).filter(
+                ScheduledMessageDB.sent == False,
+                ScheduledMessageDB.scheduled_at <= now
+            ).all()
+            for msg in due:
+                await manager.broadcast({
+                    "type": "scheduled",
+                    "content": msg.content,
+                    "sender": msg.sender_name,
+                    "target": msg.target_username or "Todos",
+                    "scheduled_id": msg.id
+                })
+                msg.sent = True
+                db.commit()
+            db.close()
+        except:
+            pass
+        await asyncio.sleep(30)
+
+
+@app.on_event("startup")
+async def startup():
+    asyncio.create_task(scheduled_message_checker())
 
 
 # ─── Gestión de juegos ─────────────────────────────────────────────
@@ -102,6 +179,81 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     "content": content,
                     "client_id": client_id
                 })
+
+            elif msg_type == "set_username":
+                name = data.get("name", "").strip()[:20]
+                if name:
+                    manager.user_names[client_id] = name
+                    await manager.send_to(client_id, {
+                        "type": "system",
+                        "content": f"✅ Ahora sos {name}"
+                    })
+                    await broadcast_user_list()
+
+            elif msg_type == "get_users":
+                names = list(manager.user_names.values())
+                await manager.send_to(client_id, {
+                    "type": "user_list",
+                    "users": names
+                })
+
+            elif msg_type == "schedule":
+                content = data.get("content", "").strip()
+                target = data.get("target", "").strip() or None
+                dt_str = data.get("datetime", "")
+                if not content or not dt_str:
+                    continue
+                try:
+                    scheduled_at = datetime.datetime.fromisoformat(dt_str)
+                except:
+                    continue
+                sender_name = manager.user_names.get(client_id, client_id)
+                db_msg = ScheduledMessageDB(
+                    content=content,
+                    sender_client_id=client_id,
+                    sender_name=sender_name,
+                    target_username=target,
+                    room=chat_id,
+                    scheduled_at=scheduled_at
+                )
+                db.add(db_msg)
+                db.commit()
+                db.refresh(db_msg)
+                await manager.send_to(client_id, {
+                    "type": "system",
+                    "content": f"📅 Programado para {target or 'todos'} el {scheduled_at.strftime('%d/%m %H:%S')}"
+                })
+
+            elif msg_type == "list_scheduled":
+                pending = db.query(ScheduledMessageDB).filter(
+                    ScheduledMessageDB.sender_client_id == client_id,
+                    ScheduledMessageDB.sent == False
+                ).order_by(ScheduledMessageDB.scheduled_at).all()
+                items = [{
+                    "id": m.id,
+                    "content": m.content,
+                    "target": m.target_username or "Todos",
+                    "scheduled_at": m.scheduled_at.isoformat()
+                } for m in pending]
+                await manager.send_to(client_id, {
+                    "type": "scheduled_list",
+                    "items": items
+                })
+
+            elif msg_type == "cancel_scheduled":
+                msg_id = data.get("id")
+                msg = db.query(ScheduledMessageDB).filter(
+                    ScheduledMessageDB.id == msg_id,
+                    ScheduledMessageDB.sender_client_id == client_id,
+                    ScheduledMessageDB.sent == False
+                ).first()
+                if msg:
+                    db.delete(msg)
+                    db.commit()
+                    await manager.send_to(client_id, {
+                        "type": "system",
+                        "content": "📅 Mensaje programado cancelado"
+                    })
 
             elif msg_type == "game_action":
                 game_type = data.get("game")
@@ -211,6 +363,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(client_id)
+        await broadcast_user_list()
         await manager.broadcast({
             "type": "system",
             "content": f"🔴 {client_id} se desconectó"

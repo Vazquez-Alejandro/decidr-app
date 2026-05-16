@@ -1,0 +1,26 @@
+{
+  "name": "Decidr — App para Decisiones",
+  "short_name": "Decidr",
+  "description": "Juegos y decisiones entre amigos: dado, palito, PPT, papelitos y más",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#075e54",
+  "theme_color": "#075e54",
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["entertainment", "games", "social"],
+  "lang": "es"
+}
