@@ -127,10 +127,15 @@
                 </div>
             </div>
             <div class="flex gap-2 items-center relative shrink-0">
-                <button onclick="toggleMenu()" class="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 transition text-sm font-semibold flex items-center gap-1.5">
-                    <span>🎮</span>
-                </button>
-                <button onclick="toggleScheduleModal()" class="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 transition text-sm">📅</button>
+                <button onclick="toggleMenu()" class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition text-lg" title="Juegos">🎮</button>
+                <button onclick="toggleScheduleModal()" class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition text-lg" title="Programar">📅</button>
+                <div class="relative">
+                    <button onclick="toggleCallPicker(false)" class="w-9 h-9 rounded-full bg-white/20 hover:bg-green-400/40 flex items-center justify-center transition text-lg" title="Llamada de voz">📞</button>
+                </div>
+                <div class="relative">
+                    <button onclick="toggleCallPicker(true)" class="w-9 h-9 rounded-full bg-white/20 hover:bg-red-400/40 flex items-center justify-center transition text-lg" title="Videollamada">📹</button>
+                    <div id="callPicker" class="hidden absolute right-0 top-10 bg-white shadow-2xl rounded-xl z-50 py-1 w-48 border border-gray-200 max-h-64 overflow-y-auto"></div>
+                </div>
                 <div id="gameMenu" class="hidden absolute right-0 top-10 bg-white shadow-2xl rounded-xl z-50 p-1.5 w-64 border border-gray-200">
                     <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Decisiones</div>
                     <button onclick="sendAction('dados')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
@@ -673,7 +678,34 @@
         document.addEventListener('click', e => { const p = document.getElementById('emojiPicker'); const b = document.getElementById('emojiBtn'); if (!p.classList.contains('hidden') && !p.contains(e.target) && !b?.contains(e.target)) p.classList.add('hidden'); });
 
         // ─── Games ───
-        function toggleMenu() { document.getElementById('gameMenu').classList.toggle('hidden'); }
+        function toggleMenu() { document.getElementById('gameMenu').classList.toggle('hidden'); document.getElementById('callPicker').classList.add('hidden'); }
+
+        let callPickingVideo = false;
+        function toggleCallPicker(video) {
+            const picker = document.getElementById('callPicker');
+            const isOpen = !picker.classList.contains('hidden') && callPickingVideo === video;
+            document.getElementById('callPicker').classList.add('hidden');
+            document.getElementById('gameMenu').classList.add('hidden');
+            if (isOpen) return;
+            callPickingVideo = video;
+            picker.innerHTML = '';
+            const online = connectedUsers.filter(u => u.id !== clientId);
+            if (online.length === 0) {
+                picker.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400 text-center">Nadie en línea</div>';
+            } else {
+                online.forEach(u => {
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex items-center gap-2';
+                    btn.innerHTML = `<span>${escapeHtml(u.name)}</span>`;
+                    btn.onclick = () => {
+                        picker.classList.add('hidden');
+                        startCall(u.id, u.name, video);
+                    };
+                    picker.appendChild(btn);
+                });
+            }
+            picker.classList.remove('hidden');
+        }
         function sendAction(game) { ws.send(JSON.stringify({type:"game_action",game,room:currentRoom})); toggleMenu(); if(game==='papelitos') startPapelitos(); if(game==='palito') showPalitoResultBtn(); if(game==='ppt') startPPT(); if(game==='palabras') { document.getElementById('palabrasInput').classList.remove('hidden'); document.getElementById('reassignRow').classList.add('hidden'); } }
         function showPalitoResultBtn() { const d = document.createElement('div'); d.className = "system-msg"; d.innerHTML = '<button onclick="revealPalito()" class="bg-amber-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-amber-600 shadow">🏆 Revelar</button>'; chat.appendChild(d); chat.scrollTop = chat.scrollHeight; }
         function revealPalito() { ws.send(JSON.stringify({type:"game_action",game:"palito_result",room:currentRoom})); }
@@ -688,7 +720,14 @@
         // ─── Sidebar ───
         function toggleSidebar() { const sb = document.getElementById('sidebar'); const ov = document.getElementById('sidebarOverlay'); const o = sb.classList.toggle('open'); ov.classList.toggle('hidden', !o); }
         document.addEventListener('keydown', e => { if(e.key==='Escape') { const sb=document.getElementById('sidebar'); if(sb.classList.contains('open')) toggleSidebar(); const m=document.getElementById('gameMenu'); if(!m.classList.contains('hidden')) toggleMenu(); } });
-        document.addEventListener('click', e => { const m=document.getElementById('gameMenu'); const b=document.querySelector('[onclick="toggleMenu()"]'); if(!m.classList.contains('hidden')&&!m.contains(e.target)&&!b?.contains(e.target)) m.classList.add('hidden'); });
+        document.addEventListener('click', e => {
+            const m=document.getElementById('gameMenu');
+            const cp=document.getElementById('callPicker');
+            const mb=document.querySelector('[onclick="toggleMenu()"]');
+            const cb=document.querySelector('[onclick*="toggleCallPicker"]');
+            if(!m.classList.contains('hidden')&&!m.contains(e.target)&&!mb?.contains(e.target)) m.classList.add('hidden');
+            if(!cp.classList.contains('hidden')&&!cp.contains(e.target)&&!cb?.contains(e.target)) cp.classList.add('hidden');
+        });
         let touchStartX=0,touchStartY=0;
         document.addEventListener('touchstart', e => { touchStartX=e.changedTouches[0].screenX; touchStartY=e.changedTouches[0].screenY; }, {passive:true});
         document.addEventListener('touchend', e => { const dx=e.changedTouches[0].screenX-touchStartX; const dy=e.changedTouches[0].screenY-touchStartY; const sb=document.getElementById('sidebar'); if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>60) { if(dx>0&&touchStartX<40&&!sb.classList.contains('open')) toggleSidebar(); else if(dx<0&&sb.classList.contains('open')) toggleSidebar(); } }, {passive:true});
