@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, LargeBinary
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 import datetime
 
@@ -13,6 +13,8 @@ class UserDB(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
+    password_hash = Column(String, nullable=True)
+    public_key = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -27,6 +29,7 @@ class MessageDB(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True, index=True)
     content = Column(String)
+    nonce = Column(String, nullable=True)
     sender_id = Column(Integer, ForeignKey("users.id"), default=1)
     chat_id = Column(Integer, ForeignKey("chats.id"), default=1)
     is_game_result = Column(Boolean, default=False)
@@ -40,6 +43,7 @@ class ScheduledMessageDB(Base):
     __tablename__ = "scheduled_messages"
     id = Column(Integer, primary_key=True, index=True)
     content = Column(String, nullable=False)
+    nonce = Column(String, nullable=True)
     sender_client_id = Column(String, nullable=False)
     sender_name = Column(String, nullable=False)
     target_username = Column(String, nullable=True)

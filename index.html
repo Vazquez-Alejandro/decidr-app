@@ -12,6 +12,8 @@
     <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
     <title>Decidr</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@1.0.3/nacl-util.min.js"></script>
     <style>
         .chat-bg { background-color: #f0f5f9; }
         .bubble { max-width: 80%; padding: 8px 14px; border-radius: 12px; margin-bottom: 6px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); word-break: break-word; }
@@ -25,24 +27,16 @@
         .ppt-btn { transition: all 0.15s; }
         .ppt-btn:hover { transform: scale(1.05); }
         .ppt-btn.selected { outline: 3px solid #5a9fbc; transform: scale(1.1); }
-
-        /* ─── Mobile sidebar (slide-in overlay) ─── */
         #sidebar { transition: transform 0.3s ease-in-out; }
         #sidebar.open { transform: translateX(0); }
         @media (max-width: 767px) {
             #sidebar { transform: translateX(-100%); }
         }
-
-        /* ─── Touch optimizations ─── */
         button, a, input, select, textarea { touch-action: manipulation; }
-
-        /* ─── Responsive: bubbles más anchos en pantallas chicas ─── */
         @media (max-width: 480px) {
             .bubble { max-width: 90%; padding: 6px 12px; }
             .game-result { padding: 8px 14px; font-size: 0.8rem; }
         }
-
-        /* ─── Game menu centrado en mobile ─── */
         @media (max-width: 480px) {
             #gameMenu {
                 position: fixed; top: 50%; left: 50%;
@@ -50,18 +44,12 @@
                 width: calc(100% - 32px); max-width: 320px;
             }
         }
-
-        /* ─── Mensaje programado ─── */
         .bubble-scheduled {
             align-self: flex-end;
             background: #fef3c7;
             border: 1px solid #fbbf24;
         }
-
-        /* ─── Modal overlay ─── */
         .modal-open { overflow: hidden !important; }
-
-        /* ─── Emoji picker ─── */
         #emojiPicker {
             position: absolute;
             bottom: 100%;
@@ -93,9 +81,36 @@
         #emojiPicker button:hover { background: #e8f5e9; }
         #emojiPicker::-webkit-scrollbar { width: 3px; }
         #emojiPicker::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        .bubble-encrypted { opacity: 0.85; border-left: 3px solid #10b981; }
+        #loginScreen input:focus { outline: none; border-color: #5a9fbc; box-shadow: 0 0 0 3px rgba(90,159,188,0.2); }
     </style>
 </head>
 <body class="h-screen flex font-sans text-gray-900 overflow-hidden bg-gray-100">
+
+    <!-- ─── Login Screen ─── -->
+    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-100 p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div class="text-center mb-6">
+                <img src="/static/icons/logo.svg" class="w-16 h-16 mx-auto mb-2" alt="Decidr">
+                <h1 class="text-2xl font-bold">Decidr</h1>
+                <p class="text-sm text-gray-500">Chat privado cifrado de extremo a extremo</p>
+            </div>
+            <div id="loginForm">
+                <input id="loginUser" type="text" class="w-full border border-gray-300 rounded-xl px-4 py-3 mb-3 text-base" placeholder="Usuario" maxlength="20" autocomplete="username">
+                <input id="loginPass" type="password" class="w-full border border-gray-300 rounded-xl px-4 py-3 mb-4 text-base" placeholder="Contraseña" autocomplete="current-password">
+                <div class="flex gap-2">
+                    <button onclick="doLogin()" class="flex-1 bg-[#5a9fbc] text-white py-3 rounded-xl font-semibold hover:bg-[#4a7f9a] transition">Iniciar sesión</button>
+                    <button onclick="doRegister()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300 transition">Registrarse</button>
+                </div>
+                <p id="loginError" class="text-red-500 text-sm text-center mt-3 hidden"></p>
+            </div>
+            <div id="loginSpinner" class="hidden text-center py-6">
+                <div class="animate-spin w-10 h-10 border-4 border-[#5a9fbc] border-t-transparent rounded-full mx-auto mb-3"></div>
+                <p class="text-sm text-gray-500">Conectando...</p>
+            </div>
+            <p class="text-center text-[10px] text-gray-400 mt-4">🔒 Cifrado de extremo a extremo · Tus mensajes son privados</p>
+        </div>
+    </div>
 
     <!-- Overlay (mobile) -->
     <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden" onclick="toggleSidebar()"></div>
@@ -106,51 +121,52 @@
             <img src="/static/icons/logo.svg" class="w-8 h-8" alt="Decidr">
             <div class="flex-1 min-w-0">
                 <h1 class="font-bold text-lg leading-tight">Decidr</h1>
+                <span class="text-[10px] opacity-80">🔒 Cifrado E2EE</span>
             </div>
             <span class="text-xs opacity-75 shrink-0">beta</span>
         </div>
         <div class="p-3 border-b border-gray-200">
             <input id="roomSearch" type="text" class="w-full bg-gray-100 rounded-lg px-3 py-2 text-base outline-none focus:ring-2 focus:ring-[#5a9fbc]" placeholder="Buscar sala...">
         </div>
-        <div id="roomList" class="flex-1 overflow-y-auto">
+        <div id="roomList" class="overflow-y-auto">
             <div class="room-item room-active p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3" data-room="default_room">
                 <img src="/static/icons/logo.svg" class="w-12 h-12 shrink-0 rounded-full bg-[#5a9fbc] p-2.5" alt="General">
                 <div class="flex-1 min-w-0">
                     <div class="font-semibold text-sm truncate">General</div>
-                    <div class="text-xs text-gray-500 truncate">Sala principal</div>
+                    <div class="text-xs text-gray-500 truncate">Sala principal · Cifrada</div>
                 </div>
             </div>
         </div>
-
-        <!-- Online Users -->
-        <div class="border-t border-gray-200">
-            <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">En línea</div>
-            <div id="onlineUsers" class="max-h-32 overflow-y-auto"></div>
+        <div class="flex-1 overflow-y-auto">
+            <div class="border-t border-gray-200">
+                <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">En línea</div>
+                <div id="onlineUsers" class="max-h-32 overflow-y-auto"></div>
+            </div>
         </div>
-
         <div class="p-3 border-t border-gray-200 space-y-2">
             <div class="flex items-center gap-2 text-sm text-gray-600">
                 <span>👤</span>
-                <span id="myUsername" class="font-semibold truncate flex-1">User_xxxx</span>
-                <button onclick="setUsername()" class="text-[#5a9fbc] hover:underline shrink-0 text-xs">✏️</button>
+                <span id="myUsername" class="font-semibold truncate flex-1"></span>
+                <span id="lockIcon" class="text-xs" title="Cifrado E2EE activo">🔒</span>
             </div>
             <button onclick="showCreateRoom()" class="w-full bg-[#5a9fbc] text-white rounded-lg py-2 text-sm font-semibold hover:bg-[#4a7f9a] transition">
                 + Nueva Sala
+            </button>
+            <button onclick="logout()" class="w-full bg-gray-200 text-gray-600 rounded-lg py-2 text-sm font-semibold hover:bg-gray-300 transition">
+                Cerrar sesión
             </button>
         </div>
     </aside>
 
     <!-- ─── MAIN ─── -->
     <div class="flex-1 flex flex-col max-w-full">
-
-        <!-- Navbar -->
         <nav class="bg-[#5a9fbc] text-white px-4 py-2 flex items-center justify-between shrink-0">
             <div class="flex items-center gap-3 min-w-0">
                 <button onclick="toggleSidebar()" class="md:hidden w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/20 active:bg-white/30 transition" aria-label="Abrir menú">☰</button>
                 <img src="/static/icons/logo.svg" class="w-9 h-9 shrink-0 rounded-full bg-white/20" alt="Decidr">
                 <div class="min-w-0">
                     <h1 class="font-bold leading-tight text-sm truncate" id="roomTitle">General</h1>
-                    <p class="text-[10px] opacity-80" id="roomStatus">Conectado</p>
+                    <p class="text-[10px] opacity-80" id="roomStatus">🔒 Cifrado</p>
                 </div>
             </div>
             <div class="flex gap-2 items-center relative">
@@ -161,8 +177,6 @@
                     📅
                 </button>
                 <button class="text-xl px-1">⋮</button>
-
-                <!-- Menú de Juegos -->
                 <div id="gameMenu" class="hidden absolute right-0 top-10 bg-white shadow-2xl rounded-xl z-50 p-1.5 w-64 border border-gray-200">
                     <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Decisiones</div>
                     <button onclick="sendAction('dados')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
@@ -191,7 +205,7 @@
 
         <!-- Chat Area -->
         <main id="chat" class="flex-1 overflow-y-auto p-4 flex flex-col chat-bg space-y-1">
-            <div class="system-msg italic">Bienvenido a Decidr. Elegí un juego arriba 🎮</div>
+            <div class="system-msg italic">🔒 Conectando con cifrado E2EE...</div>
         </main>
 
         <!-- Video Call -->
@@ -248,12 +262,42 @@
                 <button onclick="toggleEmojiPicker()" class="text-gray-500 text-2xl px-1 hover:text-gray-700 transition" id="emojiBtn">😊</button>
                 <div id="emojiPicker" class="hidden"></div>
             </div>
-            <input id="input" type="text" class="flex-1 bg-white border-none rounded-full px-4 py-2.5 outline-none shadow-sm text-base" placeholder="Escribe un mensaje">
+            <input id="input" type="text" class="flex-1 bg-white border-none rounded-full px-4 py-2.5 outline-none shadow-sm text-base" placeholder="Escribe un mensaje cifrado...">
             <button onclick="sendText()" class="bg-[#5a9fbc] text-white w-11 h-11 rounded-full flex items-center justify-center shadow-md hover:bg-[#4a7f9a] active:scale-95 transition shrink-0">
                 <span class="text-lg">➤</span>
             </button>
+            <span id="e2eeIndicator" class="text-[10px] text-green-600 absolute -top-3 right-4 bg-white px-2 rounded-t-md border border-gray-200 border-b-0">🔒 E2EE</span>
         </footer>
     </div>
+
+    <!-- ─── Incoming Call Modal ─── -->
+    <div id="incomingCallModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div class="text-5xl mb-3">📞</div>
+            <p class="text-lg font-bold mb-1">Llamada entrante</p>
+            <p id="incomingCaller" class="text-gray-500 mb-6">...</p>
+            <div class="flex gap-3 justify-center">
+                <button onclick="rejectCall()" class="bg-red-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-red-600 active:scale-95 transition">✕</button>
+                <button onclick="acceptCall()" class="bg-green-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-green-600 active:scale-95 transition">✓</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Call Bar ─── -->
+    <div id="callBar" class="hidden fixed top-0 left-0 right-0 z-50 bg-green-700 text-white px-4 py-2 flex items-center justify-between shadow-lg" style="margin-top: env(safe-area-inset-top, 0px);">
+        <div class="flex items-center gap-2 min-w-0">
+            <span class="text-lg shrink-0">📞</span>
+            <span id="callStatus" class="text-sm font-semibold truncate">Llamada con ...</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button onclick="toggleVideo()" id="toggleVideoBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition hidden" title="Activar cámara">📹</button>
+            <button onclick="toggleMute()" id="muteBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition" title="Silenciar">🎤</button>
+            <button onclick="endCall()" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-lg transition" title="Colgar">✕</button>
+        </div>
+    </div>
+
+    <!-- ─── Remote Audio ─── -->
+    <audio id="remoteAudio" autoplay></audio>
 
     <!-- ─── Modal: Programar mensaje ─── -->
     <div id="scheduleModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)toggleScheduleModal()">
@@ -281,18 +325,265 @@
     </div>
 
     <script>
-        const clientId = "User_" + Math.random().toString(36).slice(2, 6);
-        const chat = document.getElementById('chat');
+        // ─── Auth ───
+        let token = localStorage.getItem('decidr_token');
+        let myUsername = localStorage.getItem('decidr_username') || '';
+        let myUserId = null;
+        let clientId = myUsername || ('User_' + Math.random().toString(36).slice(2, 6));
+
+        // ─── E2EE Crypto ───
+        const Crypto = {
+            keyPair: null,
+            roomKeys: {},
+            peerKeys: {},
+
+            init() {
+                const stored = localStorage.getItem('decidr_keys');
+                if (stored) {
+                    try {
+                        const data = JSON.parse(stored);
+                        this.keyPair = {
+                            secretKey: nacl.util.decodeBase64(data.secretKey),
+                            publicKey: nacl.util.decodeBase64(data.publicKey)
+                        };
+                    } catch (e) {
+                        this.generateKeys();
+                    }
+                } else {
+                    this.generateKeys();
+                }
+                const roomKeys = localStorage.getItem('decidr_room_keys');
+                if (roomKeys) {
+                    try {
+                        const data = JSON.parse(roomKeys);
+                        for (const [room, key] of Object.entries(data)) {
+                            this.roomKeys[room] = nacl.util.decodeBase64(key);
+                        }
+                    } catch (e) {}
+                }
+            },
+
+            generateKeys() {
+                this.keyPair = nacl.box.keyPair();
+                localStorage.setItem('decidr_keys', JSON.stringify({
+                    secretKey: nacl.util.encodeBase64(this.keyPair.secretKey),
+                    publicKey: nacl.util.encodeBase64(this.keyPair.publicKey)
+                }));
+            },
+
+            getPublicKey() {
+                return nacl.util.encodeBase64(this.keyPair.publicKey);
+            },
+
+            getRoomKey(room) {
+                return this.roomKeys[room] || null;
+            },
+
+            setRoomKey(room, key) {
+                this.roomKeys[room] = key;
+                this._saveRoomKeys();
+            },
+
+            generateRoomKey() {
+                return nacl.randomBytes(nacl.secretbox.keyLength);
+            },
+
+            encryptMessage(room, message) {
+                const key = this.roomKeys[room];
+                if (!key) return null;
+                const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+                const msgBytes = nacl.util.decodeUTF8(message);
+                const encrypted = nacl.secretbox(msgBytes, nonce, key);
+                return {
+                    ciphertext: nacl.util.encodeBase64(encrypted),
+                    nonce: nacl.util.encodeBase64(nonce)
+                };
+            },
+
+            decryptMessage(room, ciphertext, nonce) {
+                const key = this.roomKeys[room];
+                if (!key) return null;
+                const decrypted = nacl.secretbox.open(
+                    nacl.util.decodeBase64(ciphertext),
+                    nacl.util.decodeBase64(nonce),
+                    key
+                );
+                if (!decrypted) return null;
+                return nacl.util.encodeUTF8(decrypted);
+            },
+
+            encryptRoomKeyFor(roomKey, recipientPubKey) {
+                const nonce = nacl.randomBytes(nacl.box.nonceLength);
+                const encrypted = nacl.box(
+                    roomKey, nonce,
+                    nacl.util.decodeBase64(recipientPubKey),
+                    this.keyPair.secretKey
+                );
+                return {
+                    encrypted: nacl.util.encodeBase64(encrypted),
+                    nonce: nacl.util.encodeBase64(nonce)
+                };
+            },
+
+            decryptRoomKey(encryptedB64, nonceB64, senderPubKeyB64) {
+                const decrypted = nacl.box.open(
+                    nacl.util.decodeBase64(encryptedB64),
+                    nacl.util.decodeBase64(nonceB64),
+                    nacl.util.decodeBase64(senderPubKeyB64),
+                    this.keyPair.secretKey
+                );
+                return decrypted;
+            },
+
+            _saveRoomKeys() {
+                const data = {};
+                for (const [room, key] of Object.entries(this.roomKeys)) {
+                    data[room] = nacl.util.encodeBase64(key);
+                }
+                localStorage.setItem('decidr_room_keys', JSON.stringify(data));
+            }
+        };
+
+        // ─── Login / Register ───
+        let chat = null;
         let currentRoom = 'default_room';
         let pptChosen = false;
-        let myName = clientId;
         let connectedUsers = [];
-        let ws;
+        let ws = null;
+        let hasRoomKey = false;
+        let roomKeyRequested = false;
 
+        function showLogin() {
+            document.getElementById('loginScreen').classList.remove('hidden');
+        }
+
+        function hideLogin() {
+            document.getElementById('loginScreen').classList.add('hidden');
+        }
+
+        function setError(msg) {
+            const el = document.getElementById('loginError');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        function showSpinner() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('loginSpinner').classList.remove('hidden');
+        }
+
+        function hideSpinner() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('loginSpinner').classList.add('hidden');
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('loginUser').value.trim();
+            const password = document.getElementById('loginPass').value;
+            if (!username || !password) { setError('Completá todos los campos'); return; }
+            document.getElementById('loginError').classList.add('hidden');
+            showSpinner();
+            try {
+                const resp = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    token = data.token;
+                    myUsername = data.username;
+                    myUserId = data.user_id;
+                    localStorage.setItem('decidr_token', token);
+                    localStorage.setItem('decidr_username', myUsername);
+                    clientId = myUsername;
+                    hideLogin();
+                    initApp();
+                } else {
+                    hideSpinner();
+                    setError(data.error || 'Error al iniciar sesión');
+                }
+            } catch (e) {
+                hideSpinner();
+                setError('Error de conexión');
+            }
+        }
+
+        async function doRegister() {
+            const username = document.getElementById('loginUser').value.trim();
+            const password = document.getElementById('loginPass').value;
+            if (!username || !password) { setError('Completá todos los campos'); return; }
+            if (username.length < 3) { setError('Usuario debe tener al menos 3 caracteres'); return; }
+            document.getElementById('loginError').classList.add('hidden');
+            showSpinner();
+            try {
+                const resp = await fetch('/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    token = data.token;
+                    myUsername = data.username;
+                    myUserId = data.user_id;
+                    localStorage.setItem('decidr_token', token);
+                    localStorage.setItem('decidr_username', myUsername);
+                    clientId = myUsername;
+                    hideLogin();
+                    initApp();
+                } else {
+                    hideSpinner();
+                    setError(data.error || 'Error al registrarse');
+                }
+            } catch (e) {
+                hideSpinner();
+                setError('Error de conexión');
+            }
+        }
+
+        function logout() {
+            if (ws) { ws.close(); }
+            token = null;
+            myUsername = '';
+            localStorage.removeItem('decidr_token');
+            localStorage.removeItem('decidr_username');
+            document.getElementById('loginPass').value = '';
+            showLogin();
+            hideSpinner();
+        }
+
+        // ─── App init ───
+        function initApp() {
+            Crypto.init();
+            chat = document.getElementById('chat');
+            document.getElementById('myUsername').textContent = myUsername;
+            connectWs();
+        }
+
+        // Check if logged in on load
+        if (token && myUsername) {
+            clientId = myUsername;
+            hideLogin();
+            initApp();
+        } else {
+            showLogin();
+        }
+
+        // ─── Keyboard shortcut ───
+        document.getElementById('loginPass').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doLogin();
+        });
+        document.getElementById('loginUser').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('loginPass').focus();
+        });
+
+        // ─── WebSocket ───
         function connectWs() {
             const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-            ws = new WebSocket(`${protocol}//${location.host}/ws/${clientId}`);
+            ws = new WebSocket(`${protocol}//${location.host}/ws/${clientId}?token=${token}`);
             ws.onopen = () => {
+                ws.send(JSON.stringify({ type: "public_key", key: Crypto.getPublicKey() }));
                 requestUserList();
             };
             ws.onmessage = (e) => {
@@ -303,15 +594,15 @@
                 setTimeout(connectWs, 3000);
             };
         }
-        connectWs();
 
         function handleMessage(data) {
             if (data.type === "user_list") {
                 connectedUsers = data.users;
+                updatePeerKeys();
                 updateUserSelect();
                 updateOnlineUsers();
+                requestRoomKey();
             } else if (data.type === "scheduled_list") {
-                // could show pending count, for now just log
             } else if (data.type === "incoming_call") {
                 showIncomingCall(data);
             } else if (data.type === "call_ringing") {
@@ -333,18 +624,84 @@
                 handleAnswer(data);
             } else if (data.type === "ice_candidate") {
                 handleIceCandidate(data);
+            } else if (data.type === "room_key_share") {
+                handleRoomKeyShare(data);
             } else {
                 appendMessage(data);
             }
         }
 
+        // ─── E2EE Key Exchange ───
+        function updatePeerKeys() {
+            connectedUsers.forEach(u => {
+                if (u.key && u.id !== clientId) {
+                    try {
+                        Crypto.peerKeys[u.id] = nacl.util.decodeBase64(u.key);
+                    } catch (e) {}
+                }
+            });
+        }
+
+        function requestRoomKey() {
+            if (hasRoomKey || roomKeyRequested) return;
+            const existing = Crypto.getRoomKey(currentRoom);
+            if (existing) {
+                hasRoomKey = true;
+                return;
+            }
+            roomKeyRequested = true;
+            // Wait for someone to share the key
+            setTimeout(() => {
+                if (!hasRoomKey) {
+                    // No one shared a key, generate our own
+                    const key = Crypto.generateRoomKey();
+                    Crypto.setRoomKey(currentRoom, key);
+                    hasRoomKey = true;
+                    roomKeyRequested = false;
+                    // Try to share with others
+                    shareRoomKeyWithPeers();
+                }
+                roomKeyRequested = false;
+            }, 2000);
+        }
+
+        function shareRoomKeyWithPeers() {
+            const key = Crypto.getRoomKey(currentRoom);
+            if (!key) return;
+            Object.entries(Crypto.peerKeys).forEach(([peerId, pubKey]) => {
+                const encrypted = Crypto.encryptRoomKeyFor(key, peerId);
+                ws.send(JSON.stringify({
+                    type: "room_key_share",
+                    target: peerId,
+                    room: currentRoom,
+                    encrypted_key: encrypted.encrypted,
+                    nonce: encrypted.nonce,
+                    sender_key: Crypto.getPublicKey()
+                }));
+            });
+        }
+
+        function handleRoomKeyShare(data) {
+            if (hasRoomKey) return;
+            const decrypted = Crypto.decryptRoomKey(data.encrypted_key, data.nonce, data.sender_key);
+            if (decrypted) {
+                Crypto.setRoomKey(currentRoom, decrypted);
+                hasRoomKey = true;
+                appendMessage({
+                    type: "system",
+                    content: "🔑 Clave de cifrado recibida — los mensajes están protegidos"
+                });
+            }
+        }
+
+        // ─── Scheduled / Room helpers ───
         function updateUserSelect() {
             const sel = document.getElementById('scheduleTarget');
             if (!sel) return;
             const current = sel.value;
             sel.innerHTML = '<option value="">Todos en la sala</option>';
             connectedUsers.forEach(u => {
-                if (u.name === myName) return;
+                if (u.name === myUsername) return;
                 const opt = document.createElement('option');
                 opt.value = u.name;
                 opt.textContent = u.name;
@@ -354,47 +711,66 @@
         }
 
         function requestUserList() {
-            ws.send(JSON.stringify({type: "get_users"}));
+            ws.send(JSON.stringify({ type: "get_users" }));
         }
 
-        // ─── PWA: Registrar Service Worker ───
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
         }
 
         function appendMessage(data) {
             const div = document.createElement('div');
-
-            if(data.type === "chat") {
+            if (data.type === "chat") {
                 const isMe = data.client_id === clientId;
-                div.className = `bubble ${isMe ? 'bubble-out' : 'bubble-in'}`;
-                if(!isMe) {
-                    div.innerHTML = `<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${data.sender}</span>${escapeHtml(data.content)}`;
-                } else {
-                    div.innerText = data.content;
+                let displayContent = data.content;
+                let isEncrypted = false;
+
+                // Try to decrypt
+                if (data.nonce) {
+                    const decrypted = Crypto.decryptMessage(currentRoom, data.content, data.nonce);
+                    if (decrypted !== null) {
+                        displayContent = decrypted;
+                        isEncrypted = true;
+                    } else {
+                        displayContent = "🔒 Mensaje cifrado (no tenés la clave)";
+                    }
                 }
-            } else if(data.type === "scheduled") {
+
+                div.className = `bubble ${isMe ? 'bubble-out' : 'bubble-in'} ${isEncrypted ? 'bubble-encrypted' : ''}`;
+                if (!isMe) {
+                    div.innerHTML = `<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${data.sender}</span>${escapeHtml(displayContent)}`;
+                } else {
+                    div.innerText = displayContent;
+                }
+                if (isEncrypted) {
+                    div.style.borderLeftColor = '#10b981';
+                }
+            } else if (data.type === "scheduled") {
                 div.className = "bubble bubble-scheduled";
+                let displayContent = data.content;
+                if (data.nonce) {
+                    const decrypted = Crypto.decryptMessage(currentRoom, data.content, data.nonce);
+                    if (decrypted !== null) displayContent = decrypted;
+                    else displayContent = "🔒 Mensaje cifrado";
+                }
                 const targetLabel = data.target === "Todos" ? "todos" : data.target;
-                const isMine = data.sender === myName;
+                const isMine = data.sender === myUsername;
                 div.innerHTML = `
                     <div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${isMine ? 'Programaste para' : 'De ' + data.sender + ' para'} ${targetLabel}</div>
-                    ${escapeHtml(data.content)}
+                    ${escapeHtml(displayContent)}
                 `;
-            } else if(data.type === "system") {
+            } else if (data.type === "system") {
                 div.className = "system-msg";
                 div.innerText = data.content;
-                if(data.content.includes("Pozo")) document.getElementById('papelitoInput').classList.remove('hidden');
-            } else if(data.type === "game_result") {
+                if (data.content.includes("Pozo")) document.getElementById('papelitoInput').classList.remove('hidden');
+            } else if (data.type === "game_result") {
                 div.className = "game-result";
                 div.innerHTML = data.content.replace(/\n/g, '<br>');
-                // Show/hide widgets based on game
-                if(data.content.includes("✊✋✌️") || data.content.includes("empate") || data.content.includes("gana")) {
+                if (data.content.includes("✊✋✌️") || data.content.includes("empate") || data.content.includes("gana")) {
                     document.getElementById('pptInput').classList.add('hidden');
                     pptChosen = false;
                 }
             }
-
             chat.appendChild(div);
             chat.scrollTop = chat.scrollHeight;
         }
@@ -408,13 +784,22 @@
         // ─── Text ───
         function sendText() {
             const val = document.getElementById('input').value;
-            if(!val.trim()) return;
-            ws.send(JSON.stringify({type: "text", content: val}));
+            if (!val.trim()) return;
+            const encrypted = Crypto.encryptMessage(currentRoom, val);
+            if (encrypted) {
+                ws.send(JSON.stringify({
+                    type: "text",
+                    content: encrypted.ciphertext,
+                    nonce: encrypted.nonce
+                }));
+            } else {
+                ws.send(JSON.stringify({ type: "text", content: val }));
+            }
             document.getElementById('input').value = "";
         }
 
         document.getElementById('input').addEventListener("keypress", (e) => {
-            if(e.key === "Enter") sendText();
+            if (e.key === "Enter") sendText();
         });
 
         // ─── Games Menu ───
@@ -423,30 +808,16 @@
         }
 
         function sendAction(game) {
-            ws.send(JSON.stringify({type: "game_action", game: game}));
+            ws.send(JSON.stringify({ type: "game_action", game: game }));
             toggleMenu();
-            if(game === 'papelitos') startPapelitos();
-            if(game === 'palito') {
-                // For palito, after draw, we need a result button
-                showPalitoResultBtn();
-            }
-            if(game === 'ppt') startPPT();
-            if(game === 'palabras') {
+            if (game === 'papelitos') startPapelitos();
+            if (game === 'palito') showPalitoResultBtn();
+            if (game === 'ppt') startPPT();
+            if (game === 'palabras') {
                 document.getElementById('palabrasInput').classList.remove('hidden');
                 document.getElementById('reassignRow').classList.add('hidden');
             }
         }
-
-        // ─── Nombre de usuario ───
-        function setUsername() {
-            const name = prompt("Elegí tu nombre de usuario:", myName);
-            if (name && name.trim()) {
-                myName = name.trim().slice(0, 20);
-                document.getElementById('myUsername').textContent = myName;
-                ws.send(JSON.stringify({type: "set_username", name: myName}));
-            }
-        }
-        document.getElementById('myUsername').textContent = myName;
 
         // ─── Programar mensaje ───
         function toggleScheduleModal() {
@@ -469,12 +840,17 @@
             if (!dt) { alert("Elegí fecha y hora"); return; }
             const scheduledAt = new Date(dt);
             if (scheduledAt <= new Date()) { alert("La fecha debe ser futura"); return; }
-            ws.send(JSON.stringify({
+
+            const encrypted = Crypto.encryptMessage(currentRoom, content);
+            const payload = {
                 type: "schedule",
-                content: content,
-                target: target || null,
-                datetime: scheduledAt.toISOString()
-            }));
+                content: encrypted ? encrypted.ciphertext : content,
+                datetime: scheduledAt.toISOString(),
+                target: target || null
+            };
+            if (encrypted) payload.nonce = encrypted.nonce;
+            ws.send(JSON.stringify(payload));
+
             document.getElementById('scheduleContent').value = "";
             document.getElementById('scheduleDatetime').value = "";
             toggleScheduleModal();
@@ -549,25 +925,25 @@
         }
 
         function revealPalito() {
-            ws.send(JSON.stringify({type: "game_action", game: "palito_result"}));
+            ws.send(JSON.stringify({ type: "game_action", game: "palito_result" }));
         }
 
         // ─── Papelitos ───
         function startPapelitos() {
-            ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "start"}));
+            ws.send(JSON.stringify({ type: "game_action", game: "papelitos", action: "start" }));
             toggleMenu();
             document.getElementById('papelitoInput').classList.remove('hidden');
         }
 
         function addPaper() {
             const val = document.getElementById('paperText').value;
-            if(!val.trim()) return;
-            ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "add", option: val}));
+            if (!val.trim()) return;
+            ws.send(JSON.stringify({ type: "game_action", game: "papelitos", action: "add", option: val }));
             document.getElementById('paperText').value = "";
         }
 
         function drawPaper() {
-            ws.send(JSON.stringify({type: "game_action", game: "papelitos", action: "draw"}));
+            ws.send(JSON.stringify({ type: "game_action", game: "papelitos", action: "draw" }));
         }
 
         // ─── PPT ───
@@ -578,9 +954,9 @@
         }
 
         function pptChoose(option) {
-            if(pptChosen) return;
+            if (pptChosen) return;
             pptChosen = true;
-            ws.send(JSON.stringify({type: "game_action", game: "ppt", option: option}));
+            ws.send(JSON.stringify({ type: "game_action", game: "ppt", option: option }));
             document.querySelectorAll('.ppt-btn').forEach(b => b.classList.remove('selected'));
             document.querySelector(`.ppt-btn[onclick*="${option}"]`)?.classList.add('selected');
         }
@@ -592,13 +968,13 @@
 
         function doReassign() {
             const target = document.getElementById('reassignTarget').value.trim();
-            if(!target) return;
-            ws.send(JSON.stringify({type: "game_action", game: "palabras", action: "reassign", target: target}));
+            if (!target) return;
+            ws.send(JSON.stringify({ type: "game_action", game: "palabras", action: "reassign", target: target }));
             document.getElementById('reassignTarget').value = "";
             document.getElementById('reassignRow').classList.add('hidden');
         }
 
-        // ─── Sidebar toggle (mobile) ───
+        // ─── Sidebar toggle ───
         function toggleSidebar() {
             const sb = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebarOverlay');
@@ -606,7 +982,6 @@
             overlay.classList.toggle('hidden', !isOpen);
         }
 
-        // ─── Cerrar sidebar con Escape ───
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 const sb = document.getElementById('sidebar');
@@ -616,7 +991,6 @@
             }
         });
 
-        // ─── Cerrar menú de juegos al hacer click fuera ───
         document.addEventListener('click', (e) => {
             const menu = document.getElementById('gameMenu');
             const btn = document.querySelector('[onclick="toggleMenu()"]');
@@ -625,7 +999,6 @@
             }
         });
 
-        // ─── Swipe gesture para sidebar en mobile ───
         let touchStartX = 0;
         let touchStartY = 0;
         document.addEventListener('touchstart', (e) => {
@@ -648,7 +1021,7 @@
         // ─── Create Room ───
         function showCreateRoom() {
             const name = prompt("Nombre de la nueva sala:");
-            if(name && name.trim()) {
+            if (name && name.trim()) {
                 const list = document.getElementById('roomList');
                 const div = document.createElement('div');
                 div.className = 'room-item p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3';
@@ -657,7 +1030,7 @@
                     <div class="w-12 h-12 bg-[#5a9fbc] rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0">${name[0].toUpperCase()}</div>
                     <div class="flex-1 min-w-0">
                         <div class="font-semibold text-sm truncate">${name}</div>
-                        <div class="text-xs text-gray-500 truncate">Sala creada</div>
+                        <div class="text-xs text-gray-500 truncate">🔒 Sala cifrada</div>
                     </div>
                 `;
                 div.onclick = () => switchRoom(div.dataset.room, name, div);
@@ -670,7 +1043,14 @@
             document.querySelectorAll('.room-item').forEach(r => r.classList.remove('room-active'));
             el.classList.add('room-active');
             document.getElementById('roomTitle').textContent = roomName || roomId;
-            chat.innerHTML = `<div class="system-msg italic">Cambiaste a ${roomName || roomId}</div>`;
+            chat.innerHTML = `<div class="system-msg italic">🔒 Cambiaste a ${roomName || roomId} (cifrado E2EE)</div>`;
+            hasRoomKey = false;
+            roomKeyRequested = false;
+            const existing = Crypto.getRoomKey(currentRoom);
+            if (existing) {
+                hasRoomKey = true;
+            }
+            requestRoomKey();
         }
 
         // ─── Call / WebRTC ───
@@ -688,11 +1068,13 @@
             container.innerHTML = '';
             connectedUsers.forEach(u => {
                 if (u.id === clientId) return;
+                const hasKey = u.key ? '🔒' : '❌';
                 const div = document.createElement('div');
                 div.className = 'flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 text-sm';
                 div.innerHTML = `
                     <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
                     <span class="flex-1 truncate">${escapeHtml(u.name)}</span>
+                    <span class="text-[10px]" title="${hasKey === '🔒' ? 'Cifrado E2EE disponible' : 'Sin clave pública'}">${hasKey}</span>
                     <div class="flex gap-1">
                         <button onclick="startCall('${u.id}','${escapeHtml(u.name)}',false)" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-green-100 flex items-center justify-center text-xs transition" title="Llamada de voz">📞</button>
                         <button onclick="startCall('${u.id}','${escapeHtml(u.name)}',true)" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-red-100 flex items-center justify-center text-xs transition" title="Videollamada">📹</button>
@@ -700,6 +1082,10 @@
                 `;
                 container.appendChild(div);
             });
+            // Share room key with any peer that might need it
+            if (hasRoomKey && Object.keys(Crypto.peerKeys).length > 0) {
+                shareRoomKeyWithPeers();
+            }
         }
 
         function createPC() {
@@ -768,7 +1154,6 @@
             document.getElementById('callStatus').textContent = 'Conectando...';
             document.getElementById('callBar').classList.remove('hidden');
             ws.send(JSON.stringify({ type: 'call_accept', target: callTarget }));
-
             navigator.mediaDevices.getUserMedia({ audio: true, video: callHasVideo })
                 .then(stream => {
                     localStream = stream;
@@ -876,35 +1261,6 @@
             document.getElementById('muteBtn').textContent = '🎤';
             document.getElementById('remoteAudio').srcObject = null;
         }
-
     </script>
-    <!-- ─── Incoming Call Modal ─── -->
-    <div id="incomingCallModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-            <div class="text-5xl mb-3">📞</div>
-            <p class="text-lg font-bold mb-1">Llamada entrante</p>
-            <p id="incomingCaller" class="text-gray-500 mb-6">...</p>
-            <div class="flex gap-3 justify-center">
-                <button onclick="rejectCall()" class="bg-red-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-red-600 active:scale-95 transition">✕</button>
-                <button onclick="acceptCall()" class="bg-green-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-green-600 active:scale-95 transition">✓</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ─── Call Bar ─── -->
-    <div id="callBar" class="hidden fixed top-0 left-0 right-0 z-50 bg-green-700 text-white px-4 py-2 flex items-center justify-between shadow-lg" style="margin-top: env(safe-area-inset-top, 0px);">
-        <div class="flex items-center gap-2 min-w-0">
-            <span class="text-lg shrink-0">📞</span>
-            <span id="callStatus" class="text-sm font-semibold truncate">Llamada con ...</span>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-            <button onclick="toggleVideo()" id="toggleVideoBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition hidden" title="Activar cámara">📹</button>
-            <button onclick="toggleMute()" id="muteBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition" title="Silenciar">🎤</button>
-            <button onclick="endCall()" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-lg transition" title="Colgar">✕</button>
-        </div>
-    </div>
-
-    <!-- ─── Remote Audio ─── -->
-    <audio id="remoteAudio" autoplay></audio>
 </body>
 </html>
