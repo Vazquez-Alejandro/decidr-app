@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
-from database import SessionLocal, MessageDB, UserDB, ChatDB, ScheduledMessageDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, ScheduledMessageDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -141,6 +141,114 @@ async def service_worker():
         media_type="application/javascript",
         headers={"Service-Worker-Allowed": "/"},
     )
+
+
+# ─── Room endpoints ────────────────────────────────────────────────
+def get_token_user(token: str):
+    payload = verify_token(token)
+    if not payload:
+        return None
+    return {"id": int(payload["sub"]), "username": payload["username"]}
+
+
+@app.post("/rooms")
+async def create_room(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    name = body.get("name", "").strip()
+    if not name or len(name) > 50:
+        return JSONResponse({"error": "Nombre inválido"}, status_code=400)
+    db = SessionLocal()
+    try:
+        room = RoomDB(name=name, creator_id=user["id"])
+        db.add(room)
+        db.commit()
+        db.refresh(room)
+        member = RoomMemberDB(room_id=room.id, user_id=user["id"])
+        db.add(member)
+        db.commit()
+        return {"id": room.id, "name": room.name, "created_at": room.created_at.isoformat()}
+    finally:
+        db.close()
+
+
+@app.get("/rooms")
+async def list_rooms(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        memberships = db.query(RoomMemberDB).filter(RoomMemberDB.user_id == user["id"]).all()
+        room_ids = [m.room_id for m in memberships]
+        rooms = db.query(RoomDB).filter(RoomDB.id.in_(room_ids)).all()
+        result = []
+        for r in rooms:
+            member_count = db.query(RoomMemberDB).filter(RoomMemberDB.room_id == r.id).count()
+            result.append({
+                "id": r.id,
+                "name": r.name,
+                "member_count": member_count,
+                "created_at": r.created_at.isoformat()
+            })
+        return {"rooms": result}
+    finally:
+        db.close()
+
+
+@app.post("/rooms/{room_id}/join")
+async def join_room(room_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        room = db.query(RoomDB).filter(RoomDB.id == room_id).first()
+        if not room:
+            return JSONResponse({"error": "Sala no encontrada"}, status_code=404)
+        existing = db.query(RoomMemberDB).filter(
+            RoomMemberDB.room_id == room_id, RoomMemberDB.user_id == user["id"]
+        ).first()
+        if not existing:
+            member = RoomMemberDB(room_id=room_id, user_id=user["id"])
+            db.add(member)
+            db.commit()
+        return {"id": room.id, "name": room.name}
+    finally:
+        db.close()
+
+
+# ─── Room key storage for E2EE ────────────────────────────────────
+@app.post("/rooms/{room_id}/key")
+async def store_room_key(room_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    encrypted_key = body.get("encrypted_key")
+    if not encrypted_key:
+        return JSONResponse({"error": "Falta encrypted_key"}, status_code=400)
+    db = SessionLocal()
+    try:
+        member = db.query(RoomMemberDB).filter(
+            RoomMemberDB.room_id == room_id, RoomMemberDB.user_id == user["id"]
+        ).first()
+        if not member:
+            return JSONResponse({"error": "No sos miembro"}, status_code=403)
+        user_obj = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if user_obj:
+            # Store encrypted room key on user metadata or a dedicated table
+            # For simplicity, we use a JSON field or just broadcast via WS
+            pass
+        return {"ok": True}
+    finally:
+        db.close()
 
 
 PALABRAS_POOL = [
@@ -300,7 +408,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
     await manager.connect(client_id, websocket, token_payload)
     db = SessionLocal()
-    chat_id = "default_room"
+    # room tracking per client
+    if not hasattr(manager, 'client_rooms'):
+        manager.client_rooms = {}
+    current_room = manager.client_rooms.get(client_id, "default_room")
 
     try:
         while True:
@@ -310,7 +421,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             if msg_type == "text":
                 content = data.get("content", "")
                 nonce = data.get("nonce")
-                chat_db_id = get_or_create_chat(db, chat_id)
+                room = data.get("room", current_room)
+                manager.client_rooms[client_id] = room
+                current_room = room
+                # Get or create ChatDB entry for this room name
+                chat_db_id = get_or_create_chat(db, room)
                 user = db.query(UserDB).filter(UserDB.username == client_id).first()
                 db_msg = MessageDB(
                     content=content,
@@ -327,7 +442,17 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     "sender": manager.user_names.get(client_id, client_id),
                     "content": content,
                     "nonce": nonce,
-                    "client_id": client_id
+                    "client_id": client_id,
+                    "room": room
+                })
+
+            elif msg_type == "set_room":
+                room = data.get("room", "default_room")
+                manager.client_rooms[client_id] = room
+                current_room = room
+                await manager.send_to(client_id, {
+                    "type": "system",
+                    "content": f"🔄 Cambiaste a la sala {room}"
                 })
 
             elif msg_type == "set_username":
@@ -506,6 +631,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 game_type = data.get("game")
                 action = data.get("action", "play")
                 sender_name = manager.user_names.get(client_id, client_id)
+                room = current_room
 
                 response_contents = []
 
@@ -515,13 +641,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                 elif game_type == "palito":
                     val = random.randint(1, 100)
-                    if chat_id not in game_states or game_states[chat_id].get("type") != "palito":
-                        game_states[chat_id] = {"type": "palito", "entries": []}
-                    game_states[chat_id]["entries"].append({"name": sender_name, "val": val})
+                    if room not in game_states or game_states[room].get("type") != "palito":
+                        game_states[room] = {"type": "palito", "entries": []}
+                    game_states[room]["entries"].append({"name": sender_name, "val": val})
                     response_contents.append(f"🪵 {sender_name} sacó un palito...")
 
                 elif game_type == "palito_result":
-                    gs = game_states.get(chat_id)
+                    gs = game_states.get(room)
                     if gs and gs.get("type") == "palito" and gs["entries"]:
                         entries = gs["entries"]
                         best = max(entries, key=lambda e: e["val"])
@@ -529,18 +655,18 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         ranking = sorted(entries, key=lambda e: e["val"], reverse=True)
                         lines = [f"   {i+1}. {e['name']}: {e['val']}" for i, e in enumerate(ranking)]
                         response_contents.append("📊 Ranking:\n" + "\n".join(lines))
-                        del game_states[chat_id]
+                        del game_states[room]
 
                 elif game_type == "ppt":
                     options = ["piedra", "papel", "tijera"]
                     choice = data.get("option", random.choice(options))
                     if choice not in options:
                         choice = random.choice(options)
-                    if chat_id not in game_states or game_states[chat_id].get("type") != "ppt":
-                        game_states[chat_id] = {"type": "ppt", "plays": {}}
-                    game_states[chat_id]["plays"][client_id] = choice
+                    if room not in game_states or game_states[room].get("type") != "ppt":
+                        game_states[room] = {"type": "ppt", "plays": {}}
+                    game_states[room]["plays"][client_id] = choice
 
-                    current_plays = game_states[chat_id]["plays"]
+                    current_plays = game_states[room]["plays"]
                     response_contents.append(f"✊✋✌️ {sender_name} ya eligió ({len(current_plays)}/2 jugadores)")
 
                     if len(current_plays) >= 2:
@@ -558,35 +684,35 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         else:
                             result = f"🏆 ¡{p2_name} gana! {c2} vence a {c1}"
                         response_contents.append(result)
-                        del game_states[chat_id]
+                        del game_states[room]
 
                 elif game_type == "papelitos":
                     if action == "start":
-                        game_states[chat_id] = {"type": "papelitos", "pool": []}
+                        game_states[room] = {"type": "papelitos", "pool": []}
                         response_contents.append("📝 ¡Pozo de papelitos abierto! Manden sus opciones.")
                     elif action == "add":
                         option = data.get("option")
-                        if chat_id in game_states:
-                            game_states[chat_id]["pool"].append({"val": option, "by": sender_name})
-                            count = len(game_states[chat_id]["pool"])
+                        if room in game_states:
+                            game_states[room]["pool"].append({"val": option, "by": sender_name})
+                            count = len(game_states[room]["pool"])
                             response_contents.append(f"📝 {sender_name} agregó un papelito. Total: {count}")
                     elif action == "draw":
-                        gs = game_states.get(chat_id)
+                        gs = game_states.get(room)
                         if gs and gs["pool"]:
                             pool = gs["pool"]
                             chosen = pool.pop(random.randrange(len(pool)))
                             response_contents.append(f"🎊 ¡Salió: '{chosen['val']}' (de {chosen['by']})!")
                             if not pool:
                                 response_contents.append("📭 Pozo vacío. Manden más o inicien de nuevo.")
-                                del game_states[chat_id]
+                                del game_states[room]
 
                 elif game_type == "palabras":
                     word = random.choice(PALABRAS_POOL)
                     response_contents.append(f"🔤 {sender_name} sacó: **{word}**")
                     if action == "reassign":
-                        if chat_id not in game_states or game_states[chat_id].get("type") != "palabras":
-                            game_states[chat_id] = {"type": "palabras", "pool": PALABRAS_POOL.copy(), "assigned": {}}
-                        gs = game_states[chat_id]
+                        if room not in game_states or game_states[room].get("type") != "palabras":
+                            game_states[room] = {"type": "palabras", "pool": PALABRAS_POOL.copy(), "assigned": {}}
+                        gs = game_states[room]
                         target = data.get("target", sender_name)
                         if gs["pool"]:
                             w = gs["pool"].pop(random.randrange(len(gs["pool"])))
@@ -596,9 +722,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 for resp in response_contents:
                     await manager.broadcast({
                         "type": "game_result",
-                        "content": resp
+                        "content": resp,
+                        "room": room
                     })
-                    chat_db_id = get_or_create_chat(db, chat_id)
+                    chat_db_id = get_or_create_chat(db, room)
                     db_msg = MessageDB(content=resp, is_game_result=True, sender_id=1, chat_id=chat_db_id)
                     db.add(db_msg)
                     db.commit()

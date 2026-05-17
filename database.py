@@ -39,6 +39,25 @@ class MessageDB(Base):
     chat = relationship("ChatDB")
 
 
+class RoomDB(Base):
+    __tablename__ = "rooms"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    creator_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    creator = relationship("UserDB")
+
+
+class RoomMemberDB(Base):
+    __tablename__ = "room_members"
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    joined_at = Column(DateTime, default=datetime.datetime.utcnow)
+    room = relationship("RoomDB")
+    user = relationship("UserDB")
+
+
 class ScheduledMessageDB(Base):
     __tablename__ = "scheduled_messages"
     id = Column(Integer, primary_key=True, index=True)
