@@ -106,8 +106,8 @@ manager = ConnectionManager()
 
 # ─── Usuarios activos ─────────────────────────────────────────────
 async def broadcast_user_list():
-    names = list(manager.user_names.values())
-    await manager.broadcast({"type": "user_list", "users": names})
+    users = [{"id": cid, "name": name} for cid, name in manager.user_names.items()]
+    await manager.broadcast({"type": "user_list", "users": users})
 
 
 # ─── Programación de mensajes ─────────────────────────────────────
@@ -254,6 +254,71 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "type": "system",
                         "content": "📅 Mensaje programado cancelado"
                     })
+
+            elif msg_type in ("call_request", "call_accept", "call_reject", "call_end", "offer", "answer", "ice_candidate"):
+                target = data.get("target")
+                sender_name = manager.user_names.get(client_id, client_id)
+
+                if msg_type == "call_request":
+                    if target and target in manager.active_connections:
+                        await manager.send_to(target, {
+                            "type": "incoming_call",
+                            "from": client_id,
+                            "from_name": sender_name
+                        })
+                        await manager.send_to(client_id, {
+                            "type": "call_ringing"
+                        })
+                    else:
+                        await manager.send_to(client_id, {
+                            "type": "call_error",
+                            "content": "Usuario no disponible"
+                        })
+
+                elif msg_type == "call_accept":
+                    if target and target in manager.active_connections:
+                        await manager.send_to(target, {
+                            "type": "call_accepted",
+                            "from": client_id
+                        })
+
+                elif msg_type == "call_reject":
+                    if target and target in manager.active_connections:
+                        await manager.send_to(target, {
+                            "type": "call_rejected",
+                            "from": client_id
+                        })
+
+                elif msg_type == "call_end":
+                    if target and target in manager.active_connections:
+                        await manager.send_to(target, {
+                            "type": "call_ended",
+                            "from": client_id
+                        })
+
+                elif msg_type == "offer":
+                    if target and target in manager.active_connections:
+                        await manager.send_to(target, {
+                            "type": "offer",
+                            "sdp": data.get("sdp"),
+                            "from": client_id
+                        })
+
+                elif msg_type == "answer":
+                    if target and target in manager.active_connections:
+                        await manager.send_to(target, {
+                            "type": "answer",
+                            "sdp": data.get("sdp"),
+                            "from": client_id
+                        })
+
+                elif msg_type == "ice_candidate":
+                    if target and target in manager.active_connections:
+                        await manager.send_to(target, {
+                            "type": "ice_candidate",
+                            "candidate": data.get("candidate"),
+                            "from": client_id
+                        })
 
             elif msg_type == "game_action":
                 game_type = data.get("game")

@@ -121,6 +121,13 @@
                 </div>
             </div>
         </div>
+
+        <!-- Online Users -->
+        <div class="border-t border-gray-200">
+            <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">En línea</div>
+            <div id="onlineUsers" class="max-h-32 overflow-y-auto"></div>
+        </div>
+
         <div class="p-3 border-t border-gray-200 space-y-2">
             <div class="flex items-center gap-2 text-sm text-gray-600">
                 <span>👤</span>
@@ -296,8 +303,30 @@
             if (data.type === "user_list") {
                 connectedUsers = data.users;
                 updateUserSelect();
+                updateOnlineUsers();
             } else if (data.type === "scheduled_list") {
                 // could show pending count, for now just log
+            } else if (data.type === "incoming_call") {
+                showIncomingCall(data);
+            } else if (data.type === "call_ringing") {
+                document.getElementById('callStatus').textContent = 'Llamando...';
+            } else if (data.type === "call_accepted") {
+                startWebRTC();
+            } else if (data.type === "call_rejected") {
+                alert('Llamada rechazada');
+                resetCallUI();
+            } else if (data.type === "call_ended") {
+                alert('Llamada finalizada');
+                cleanupCall();
+            } else if (data.type === "call_error") {
+                alert(data.content);
+                resetCallUI();
+            } else if (data.type === "offer") {
+                handleOffer(data);
+            } else if (data.type === "answer") {
+                handleAnswer(data);
+            } else if (data.type === "ice_candidate") {
+                handleIceCandidate(data);
             } else {
                 appendMessage(data);
             }
@@ -309,13 +338,13 @@
             const current = sel.value;
             sel.innerHTML = '<option value="">Todos en la sala</option>';
             connectedUsers.forEach(u => {
-                if (u === myName) return;
+                if (u.name === myName) return;
                 const opt = document.createElement('option');
-                opt.value = u;
-                opt.textContent = u;
+                opt.value = u.name;
+                opt.textContent = u.name;
                 sel.appendChild(opt);
             });
-            if (current && connectedUsers.includes(current)) sel.value = current;
+            if (current && connectedUsers.some(u => u.name === current)) sel.value = current;
         }
 
         function requestUserList() {
@@ -637,6 +666,194 @@
             document.getElementById('roomTitle').textContent = roomName || roomId;
             chat.innerHTML = `<div class="system-msg italic">Cambiaste a ${roomName || roomId}</div>`;
         }
+
+        // ─── Call / WebRTC ───
+        let pc = null;
+        let localStream = null;
+        let callTarget = null;
+        let callState = 'idle';
+        let callMuted = false;
+        const ICE_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+        function updateOnlineUsers() {
+            const container = document.getElementById('onlineUsers');
+            if (!container) return;
+            container.innerHTML = '';
+            connectedUsers.forEach(u => {
+                if (u.id === clientId) return;
+                const div = document.createElement('div');
+                div.className = 'flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 text-sm';
+                div.innerHTML = `
+                    <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+                    <span class="flex-1 truncate">${escapeHtml(u.name)}</span>
+                    <button onclick="startCall('${u.id}','${escapeHtml(u.name)}')" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-green-100 flex items-center justify-center text-sm transition" title="Llamar">📞</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function createPC() {
+            pc = new RTCPeerConnection(ICE_CONFIG);
+            if (localStream) {
+                localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+            }
+            pc.onicecandidate = e => {
+                if (e.candidate) {
+                    ws.send(JSON.stringify({ type: 'ice_candidate', target: callTarget, candidate: e.candidate }));
+                }
+            };
+            pc.ontrack = e => {
+                const audio = document.getElementById('remoteAudio');
+                audio.srcObject = e.streams[0];
+            };
+        }
+
+        function startCall(targetId, targetName) {
+            if (callState !== 'idle') return;
+            callTarget = targetId;
+            callState = 'calling';
+            document.getElementById('callStatus').textContent = `Llamando a ${targetName}...`;
+            document.getElementById('callBar').classList.remove('hidden');
+            ws.send(JSON.stringify({ type: 'call_request', target: targetId }));
+        }
+
+        function showIncomingCall(data) {
+            if (callState !== 'idle') return;
+            callTarget = data.from;
+            callState = 'ringing';
+            document.getElementById('incomingCaller').textContent = `${data.from_name} te está llamando`;
+            document.getElementById('incomingCallModal').classList.remove('hidden');
+        }
+
+        function acceptCall() {
+            document.getElementById('incomingCallModal').classList.add('hidden');
+            callState = 'connected';
+            document.getElementById('callStatus').textContent = 'Conectando...';
+            document.getElementById('callBar').classList.remove('hidden');
+            ws.send(JSON.stringify({ type: 'call_accept', target: callTarget }));
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    createPC();
+                })
+                .catch(err => {
+                    alert('Error al acceder al micrófono: ' + err.message);
+                    endCall();
+                });
+        }
+
+        function rejectCall() {
+            document.getElementById('incomingCallModal').classList.add('hidden');
+            if (callTarget) {
+                ws.send(JSON.stringify({ type: 'call_reject', target: callTarget }));
+            }
+            callTarget = null;
+            callState = 'idle';
+        }
+
+        function startWebRTC() {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    createPC();
+                    return pc.createOffer();
+                })
+                .then(offer => pc.setLocalDescription(offer))
+                .then(() => {
+                    ws.send(JSON.stringify({ type: 'offer', target: callTarget, sdp: pc.localDescription }));
+                    document.getElementById('callStatus').textContent = 'Llamada en curso...';
+                    callState = 'connected';
+                })
+                .catch(err => {
+                    alert('Error al acceder al micrófono: ' + err.message);
+                    endCall();
+                });
+        }
+
+        function handleOffer(data) {
+            callState = 'connected';
+            document.getElementById('callStatus').textContent = 'Llamada en curso...';
+            if (!pc) createPC();
+            pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                .then(() => pc.createAnswer())
+                .then(answer => pc.setLocalDescription(answer))
+                .then(() => {
+                    ws.send(JSON.stringify({ type: 'answer', target: callTarget, sdp: pc.localDescription }));
+                });
+        }
+
+        function handleAnswer(data) {
+            if (pc) {
+                pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                document.getElementById('callStatus').textContent = 'Llamada en curso...';
+            }
+        }
+
+        function handleIceCandidate(data) {
+            if (pc) {
+                pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+            }
+        }
+
+        function toggleMute() {
+            if (localStream) {
+                callMuted = !callMuted;
+                localStream.getAudioTracks().forEach(t => t.enabled = !callMuted);
+                document.getElementById('muteBtn').textContent = callMuted ? '🔇' : '🎤';
+            }
+        }
+
+        function endCall() {
+            if (callTarget && (callState === 'calling' || callState === 'connected')) {
+                ws.send(JSON.stringify({ type: 'call_end', target: callTarget }));
+            }
+            cleanupCall();
+        }
+
+        function cleanupCall() {
+            if (pc) { pc.close(); pc = null; }
+            if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+            callTarget = null;
+            callState = 'idle';
+            callMuted = false;
+            resetCallUI();
+        }
+
+        function resetCallUI() {
+            document.getElementById('callBar').classList.add('hidden');
+            document.getElementById('incomingCallModal').classList.add('hidden');
+            document.getElementById('muteBtn').textContent = '🎤';
+            document.getElementById('remoteAudio').srcObject = null;
+        }
+
     </script>
+    <!-- ─── Incoming Call Modal ─── -->
+    <div id="incomingCallModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div class="text-5xl mb-3">📞</div>
+            <p class="text-lg font-bold mb-1">Llamada entrante</p>
+            <p id="incomingCaller" class="text-gray-500 mb-6">...</p>
+            <div class="flex gap-3 justify-center">
+                <button onclick="rejectCall()" class="bg-red-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-red-600 active:scale-95 transition">✕</button>
+                <button onclick="acceptCall()" class="bg-green-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-green-600 active:scale-95 transition">✓</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Call Bar ─── -->
+    <div id="callBar" class="hidden fixed top-0 left-0 right-0 z-50 bg-green-700 text-white px-4 py-2 flex items-center justify-between shadow-lg" style="margin-top: env(safe-area-inset-top, 0px);">
+        <div class="flex items-center gap-2 min-w-0">
+            <span class="text-lg shrink-0">📞</span>
+            <span id="callStatus" class="text-sm font-semibold truncate">Llamada con ...</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button onclick="toggleMute()" id="muteBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition" title="Silenciar">🎤</button>
+            <button onclick="endCall()" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-lg transition" title="Colgar">✕</button>
+        </div>
+    </div>
+
+    <!-- ─── Remote Audio ─── -->
+    <audio id="remoteAudio" autoplay></audio>
 </body>
 </html>
