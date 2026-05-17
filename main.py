@@ -264,7 +264,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         await manager.send_to(target, {
                             "type": "incoming_call",
                             "from": client_id,
-                            "from_name": sender_name
+                            "from_name": sender_name,
+                            "has_video": data.get("has_video", False)
                         })
                         await manager.send_to(client_id, {
                             "type": "call_ringing"

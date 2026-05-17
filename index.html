@@ -194,6 +194,12 @@
             <div class="system-msg italic">Bienvenido a Decidr. Elegí un juego arriba 🎮</div>
         </main>
 
+        <!-- Video Call -->
+        <div id="videoContainer" class="hidden flex-1 relative bg-black">
+            <video id="remoteVideo" class="absolute inset-0 w-full h-full object-contain" autoplay playsinline></video>
+            <video id="localVideo" class="absolute bottom-4 right-4 w-28 h-44 object-cover rounded-xl shadow-2xl border-2 border-white z-10" autoplay playsinline muted></video>
+        </div>
+
         <!-- Widget Papelitos -->
         <div id="papelitoInput" class="hidden bg-blue-50 px-4 py-3 border-t border-blue-200 flex flex-col gap-2 shadow-inner">
             <p class="text-[10px] font-bold text-blue-700 tracking-widest uppercase">📝 Modo Papelitos</p>
@@ -673,6 +679,7 @@
         let callTarget = null;
         let callState = 'idle';
         let callMuted = false;
+        let callHasVideo = false;
         const ICE_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         function updateOnlineUsers() {
@@ -686,7 +693,10 @@
                 div.innerHTML = `
                     <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
                     <span class="flex-1 truncate">${escapeHtml(u.name)}</span>
-                    <button onclick="startCall('${u.id}','${escapeHtml(u.name)}')" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-green-100 flex items-center justify-center text-sm transition" title="Llamar">📞</button>
+                    <div class="flex gap-1">
+                        <button onclick="startCall('${u.id}','${escapeHtml(u.name)}',false)" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-green-100 flex items-center justify-center text-xs transition" title="Llamada de voz">📞</button>
+                        <button onclick="startCall('${u.id}','${escapeHtml(u.name)}',true)" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-red-100 flex items-center justify-center text-xs transition" title="Videollamada">📹</button>
+                    </div>
                 `;
                 container.appendChild(div);
             });
@@ -703,25 +713,52 @@
                 }
             };
             pc.ontrack = e => {
-                const audio = document.getElementById('remoteAudio');
-                audio.srcObject = e.streams[0];
+                if (callHasVideo && e.track.kind === 'video') {
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    if (remoteVideo.srcObject !== e.streams[0]) {
+                        remoteVideo.srcObject = e.streams[0];
+                    }
+                } else {
+                    const audio = document.getElementById('remoteAudio');
+                    audio.srcObject = e.streams[0];
+                }
             };
         }
 
-        function startCall(targetId, targetName) {
+        function showVideoContainer() {
+            document.getElementById('chat').classList.add('hidden');
+            document.getElementById('videoContainer').classList.remove('hidden');
+            document.getElementById('toggleVideoBtn').classList.remove('hidden');
+            document.getElementById('toggleVideoBtn').textContent = '📹';
+            const localVideo = document.getElementById('localVideo');
+            if (localStream) localVideo.srcObject = localStream;
+        }
+
+        function hideVideoContainer() {
+            document.getElementById('videoContainer').classList.add('hidden');
+            document.getElementById('remoteVideo').srcObject = null;
+            document.getElementById('localVideo').srcObject = null;
+            document.getElementById('toggleVideoBtn').classList.add('hidden');
+            document.getElementById('chat').classList.remove('hidden');
+        }
+
+        function startCall(targetId, targetName, hasVideo) {
             if (callState !== 'idle') return;
+            callHasVideo = hasVideo;
             callTarget = targetId;
             callState = 'calling';
             document.getElementById('callStatus').textContent = `Llamando a ${targetName}...`;
             document.getElementById('callBar').classList.remove('hidden');
-            ws.send(JSON.stringify({ type: 'call_request', target: targetId }));
+            ws.send(JSON.stringify({ type: 'call_request', target: targetId, has_video: hasVideo }));
         }
 
         function showIncomingCall(data) {
             if (callState !== 'idle') return;
+            callHasVideo = data.has_video;
             callTarget = data.from;
             callState = 'ringing';
-            document.getElementById('incomingCaller').textContent = `${data.from_name} te está llamando`;
+            const icon = data.has_video ? ' 📹' : ' 📞';
+            document.getElementById('incomingCaller').textContent = `${data.from_name} te está llamando${icon}`;
             document.getElementById('incomingCallModal').classList.remove('hidden');
         }
 
@@ -732,13 +769,14 @@
             document.getElementById('callBar').classList.remove('hidden');
             ws.send(JSON.stringify({ type: 'call_accept', target: callTarget }));
 
-            navigator.mediaDevices.getUserMedia({ audio: true })
+            navigator.mediaDevices.getUserMedia({ audio: true, video: callHasVideo })
                 .then(stream => {
                     localStream = stream;
+                    if (callHasVideo) showVideoContainer();
                     createPC();
                 })
                 .catch(err => {
-                    alert('Error al acceder al micrófono: ' + err.message);
+                    alert('Error al acceder al micrófono/cámara: ' + err.message);
                     endCall();
                 });
         }
@@ -753,9 +791,10 @@
         }
 
         function startWebRTC() {
-            navigator.mediaDevices.getUserMedia({ audio: true })
+            navigator.mediaDevices.getUserMedia({ audio: true, video: callHasVideo })
                 .then(stream => {
                     localStream = stream;
+                    if (callHasVideo) showVideoContainer();
                     createPC();
                     return pc.createOffer();
                 })
@@ -766,7 +805,7 @@
                     callState = 'connected';
                 })
                 .catch(err => {
-                    alert('Error al acceder al micrófono: ' + err.message);
+                    alert('Error al acceder al micrófono/cámara: ' + err.message);
                     endCall();
                 });
         }
@@ -804,6 +843,15 @@
             }
         }
 
+        function toggleVideo() {
+            if (localStream) {
+                const tracks = localStream.getVideoTracks();
+                const enabled = tracks.length > 0 && tracks[0].enabled;
+                tracks.forEach(t => t.enabled = !enabled);
+                document.getElementById('toggleVideoBtn').textContent = enabled ? '🚫' : '📹';
+            }
+        }
+
         function endCall() {
             if (callTarget && (callState === 'calling' || callState === 'connected')) {
                 ws.send(JSON.stringify({ type: 'call_end', target: callTarget }));
@@ -817,10 +865,12 @@
             callTarget = null;
             callState = 'idle';
             callMuted = false;
+            callHasVideo = false;
             resetCallUI();
         }
 
         function resetCallUI() {
+            hideVideoContainer();
             document.getElementById('callBar').classList.add('hidden');
             document.getElementById('incomingCallModal').classList.add('hidden');
             document.getElementById('muteBtn').textContent = '🎤';
@@ -848,6 +898,7 @@
             <span id="callStatus" class="text-sm font-semibold truncate">Llamada con ...</span>
         </div>
         <div class="flex items-center gap-2 shrink-0">
+            <button onclick="toggleVideo()" id="toggleVideoBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition hidden" title="Activar cámara">📹</button>
             <button onclick="toggleMute()" id="muteBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition" title="Silenciar">🎤</button>
             <button onclick="endCall()" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-lg transition" title="Colgar">✕</button>
         </div>
