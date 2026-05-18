@@ -730,20 +730,12 @@ manager = ConnectionManager()
 
 # ─── Usuarios activos ─────────────────────────────────────────────
 async def broadcast_user_list():
-    db = SessionLocal()
-    try:
-        users = []
-        for cid in manager.user_names:
-            name = manager.user_names[cid]
-            user = db.query(UserDB).filter(UserDB.username == name).first()
-            users.append({
-                "id": cid,
-                "name": name,
-                "key": user.public_key if user else None
-            })
-        await manager.broadcast({"type": "user_list", "users": users})
-    finally:
-        db.close()
+    users = [{
+        "id": cid,
+        "name": name,
+        "key": manager.user_data.get(cid, {}).get("public_key")
+    } for cid, name in manager.user_names.items()]
+    await manager.broadcast({"type": "user_list", "users": users})
 
 
 # ─── Programación de mensajes ─────────────────────────────────────
