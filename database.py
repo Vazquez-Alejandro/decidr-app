@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, LargeBinary
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 import datetime
 
@@ -15,7 +15,21 @@ class UserDB(Base):
     username = Column(String, unique=True, index=True)
     password_hash = Column(String, nullable=True)
     public_key = Column(String, nullable=True)
+    display_name = Column(String, nullable=True)
+    bio = Column(String, nullable=True)
+    avatar = Column(String, nullable=True)
+    theme = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class BlockedUserDB(Base):
+    __tablename__ = "blocked_users"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    blocked_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    blocker = relationship("UserDB", foreign_keys=[user_id])
+    blocked = relationship("UserDB", foreign_keys=[blocked_id])
 
 
 class ChatDB(Base):
@@ -34,7 +48,6 @@ class MessageDB(Base):
     chat_id = Column(Integer, ForeignKey("chats.id"), default=1)
     is_game_result = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-
     sender = relationship("UserDB")
     chat = relationship("ChatDB")
 

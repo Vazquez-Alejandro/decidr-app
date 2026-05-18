@@ -7,12 +7,13 @@ import time
 import secrets
 from pathlib import Path
 from collections import defaultdict
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File
+from fastapi.datastructures import UploadFile as UploadFileType
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, ScheduledMessageDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -20,7 +21,12 @@ from pydantic import BaseModel
 Base.metadata.create_all(bind=engine)
 
 # ─── JWT ────────────────────────────────────────────────────────────
-JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(64))
+_SECRET_FILE = Path(__file__).parent / ".jwt_secret"
+if _SECRET_FILE.exists():
+    JWT_SECRET = _SECRET_FILE.read_text().strip()
+else:
+    JWT_SECRET = secrets.token_hex(64)
+    _SECRET_FILE.write_text(JWT_SECRET)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY = 24 * 3600
 
@@ -163,6 +169,17 @@ async def create_room(req: Request):
         return JSONResponse({"error": "Nombre inválido"}, status_code=400)
     db = SessionLocal()
     try:
+        existing_room = db.query(RoomDB).filter(RoomDB.name == name).first()
+        if existing_room:
+            existing_member = db.query(RoomMemberDB).filter(
+                RoomMemberDB.room_id == existing_room.id,
+                RoomMemberDB.user_id == user["id"]
+            ).first()
+            if not existing_member:
+                member = RoomMemberDB(room_id=existing_room.id, user_id=user["id"])
+                db.add(member)
+                db.commit()
+            return {"id": existing_room.id, "name": existing_room.name}
         room = RoomDB(name=name, creator_id=user["id"])
         db.add(room)
         db.commit()
@@ -189,10 +206,21 @@ async def list_rooms(req: Request):
         result = []
         for r in rooms:
             member_count = db.query(RoomMemberDB).filter(RoomMemberDB.room_id == r.id).count()
+            is_dm = r.name.startswith("__dm__") if r.name else False
+            display_name = r.name
+            if is_dm:
+                members = db.query(RoomMemberDB).filter(RoomMemberDB.room_id == r.id).all()
+                for m in members:
+                    if m.user_id != user["id"]:
+                        other = db.query(UserDB).filter(UserDB.id == m.user_id).first()
+                        if other:
+                            display_name = other.display_name or other.username
+                        break
             result.append({
                 "id": r.id,
-                "name": r.name,
+                "name": display_name,
                 "member_count": member_count,
+                "is_dm": is_dm,
                 "created_at": r.created_at.isoformat()
             })
         return {"rooms": result}
@@ -251,6 +279,200 @@ async def store_room_key(room_id: int, req: Request):
         db.close()
 
 
+# ─── Profile & Block endpoints ────────────────────────────────────
+AVATAR_DIR = STATIC_DIR / "avatars"
+AVATAR_DIR.mkdir(exist_ok=True)
+
+
+@app.put("/profile")
+async def update_profile(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u:
+            return JSONResponse({"error": "No encontrado"}, status_code=404)
+        if "display_name" in body:
+            u.display_name = body["display_name"][:30]
+        if "bio" in body:
+            u.bio = body["bio"][:150]
+        if "theme" in body:
+            u.theme = body["theme"]
+        db.commit()
+        return {"ok": True, "display_name": u.display_name, "bio": u.bio}
+    finally:
+        db.close()
+
+
+@app.post("/profile/avatar")
+async def upload_avatar(req: Request, file: UploadFile = File(...)):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
+        return JSONResponse({"error": "Formato no soportado (JPEG, PNG, WebP)"}, status_code=400)
+    ext = file.filename.split(".")[-1] if "." in (file.filename or "") else "jpg"
+    fname = f"avatar_{user['id']}_{int(time.time())}.{ext}"
+    fpath = AVATAR_DIR / fname
+    content = await file.read()
+    fpath.write_bytes(content)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if u:
+            u.avatar = f"/static/avatars/{fname}"
+            db.commit()
+        return {"ok": True, "avatar": u.avatar if u else None}
+    finally:
+        db.close()
+
+
+@app.get("/profile/{username}")
+async def get_profile(username: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.username == username).first()
+        if not u:
+            return JSONResponse({"error": "No encontrado"}, status_code=404)
+        return {
+            "username": u.username,
+            "display_name": u.display_name,
+            "bio": u.bio,
+            "avatar": u.avatar
+        }
+    finally:
+        db.close()
+
+
+@app.post("/profile/block/{username}")
+async def block_user(username: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    if username == user["username"]:
+        return JSONResponse({"error": "No te podés bloquear a vos mismo"}, status_code=400)
+    db = SessionLocal()
+    try:
+        target = db.query(UserDB).filter(UserDB.username == username).first()
+        if not target:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        existing = db.query(BlockedUserDB).filter(
+            BlockedUserDB.user_id == user["id"], BlockedUserDB.blocked_id == target.id
+        ).first()
+        if not existing:
+            b = BlockedUserDB(user_id=user["id"], blocked_id=target.id)
+            db.add(b)
+            db.commit()
+        return {"ok": True, "blocked": username}
+    finally:
+        db.close()
+
+
+@app.delete("/profile/block/{username}")
+async def unblock_user(username: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        target = db.query(UserDB).filter(UserDB.username == username).first()
+        if target:
+            db.query(BlockedUserDB).filter(
+                BlockedUserDB.user_id == user["id"], BlockedUserDB.blocked_id == target.id
+            ).delete()
+            db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.get("/users/search")
+async def search_users(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    q = req.query_params.get("q", "").strip()
+    if not q or len(q) < 1:
+        return JSONResponse({"error": "Búsqueda muy corta"}, status_code=400)
+    db = SessionLocal()
+    try:
+        users = db.query(UserDB).filter(
+            UserDB.username.ilike(f"%{q}%"),
+            UserDB.id != user["id"]
+        ).limit(20).all()
+        return {"users": [{"username": u.username, "display_name": u.display_name} for u in users]}
+    finally:
+        db.close()
+
+
+@app.post("/rooms/dm/{username}")
+async def create_dm(username: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        target = db.query(UserDB).filter(UserDB.username == username).first()
+        if not target:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        if target.id == user["id"]:
+            return JSONResponse({"error": "No te podés DM a vos mismo"}, status_code=400)
+        ids = sorted([user["id"], target.id])
+        dm_name = f"__dm__{ids[0]}_{ids[1]}"
+        existing = db.query(RoomDB).filter(RoomDB.name == dm_name).first()
+        if existing:
+            return {"id": existing.id, "name": target.display_name or target.username, "is_dm": True}
+        room = RoomDB(name=dm_name, creator_id=user["id"])
+        db.add(room)
+        db.commit()
+        db.refresh(room)
+        for uid in [user["id"], target.id]:
+            member = RoomMemberDB(room_id=room.id, user_id=uid)
+            db.add(member)
+        db.commit()
+        # Notify the other user about the new DM
+        await manager.send_to(target.username, {
+            "type": "new_dm",
+            "room_id": room.id,
+            "from": user["username"]
+        })
+        return {"id": room.id, "name": target.display_name or target.username, "is_dm": True}
+    finally:
+        db.close()
+
+
+@app.get("/profile/blocked/list")
+async def get_blocked(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        blocks = db.query(BlockedUserDB).filter(BlockedUserDB.user_id == user["id"]).all()
+        result = []
+        for b in blocks:
+            u = db.query(UserDB).filter(UserDB.id == b.blocked_id).first()
+            if u:
+                result.append({"username": u.username, "display_name": u.display_name})
+        return {"blocked": result}
+    finally:
+        db.close()
+
+
 PALABRAS_POOL = [
     "Cerveza", "Hielo", "Carbon", "Carne", "Ensalada", "Pan",
     "Salsa", "Vaso", "Plato", "Servilleta", "Pizza", "Helado",
@@ -280,7 +502,10 @@ class ConnectionManager:
             "content": f"🟢 {client_id} se conectó"
         })
 
-    def disconnect(self, client_id: str):
+    def disconnect(self, client_id: str, websocket: WebSocket = None):
+        current = self.active_connections.get(client_id)
+        if websocket and current is not websocket:
+            return  # a newer connection already replaced this one
         self.active_connections.pop(client_id, None)
         self.user_names.pop(client_id, None)
         self.user_data.pop(client_id, None)
@@ -424,27 +649,41 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 room = data.get("room", current_room)
                 manager.client_rooms[client_id] = room
                 current_room = room
-                # Get or create ChatDB entry for this room name
-                chat_db_id = get_or_create_chat(db, room)
-                user = db.query(UserDB).filter(UserDB.username == client_id).first()
-                db_msg = MessageDB(
-                    content=content,
-                    nonce=nonce,
-                    is_game_result=False,
-                    sender_id=user.id if user else 1,
-                    chat_id=chat_db_id
-                )
-                db.add(db_msg)
-                db.commit()
-
-                await manager.broadcast({
-                    "type": "chat",
-                    "sender": manager.user_names.get(client_id, client_id),
-                    "content": content,
-                    "nonce": nonce,
-                    "client_id": client_id,
-                    "room": room
-                })
+                # Save to DB (best effort)
+                try:
+                    chat_db_id = get_or_create_chat(db, room)
+                    user = db.query(UserDB).filter(UserDB.username == client_id).first()
+                    db_msg = MessageDB(
+                        content=content,
+                        nonce=nonce,
+                        is_game_result=False,
+                        sender_id=user.id if user else 1,
+                        chat_id=chat_db_id
+                    )
+                    db.add(db_msg)
+                    db.commit()
+                except Exception as e:
+                    print(f"DB save error: {e}")
+                # Broadcast to all (happens regardless of DB success)
+                try:
+                    sender_name = manager.user_names.get(client_id, client_id)
+                    chat_msg = {
+                        "type": "chat",
+                        "sender": sender_name,
+                        "content": content,
+                        "nonce": nonce,
+                        "client_id": client_id,
+                        "room": room
+                    }
+                    for cid, conn in manager.active_connections.items():
+                        if cid == client_id:
+                            continue
+                        try:
+                            await conn.send_json(chat_msg)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print(f"Broadcast error: {e}")
 
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")
@@ -731,7 +970,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     db.commit()
 
     except WebSocketDisconnect:
-        manager.disconnect(client_id)
+        manager.disconnect(client_id, websocket)
         await broadcast_user_list()
         await manager.broadcast({
             "type": "system",

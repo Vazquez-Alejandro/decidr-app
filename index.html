@@ -11,163 +11,158 @@
     <title>Decidr</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@1.0.3/nacl-util.min.js"></script>
+    <script>nacl.util={decodeUTF8:function(s){var i,d=unescape(encodeURIComponent(s)),b=new Uint8Array(d.length);for(i=0;i<d.length;i++)b[i]=d.charCodeAt(i);return b},encodeUTF8:function(b){var i,s=[];for(i=0;i<b.length;i++)s.push(String.fromCharCode(b[i]));return decodeURIComponent(escape(s.join('')))},encodeBase64:function(b){var i,s=[],m='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',pad;for(i=0;i<b.length;i+=3){var n=(b[i]<<16)+(i+1<b.length?b[i+1]<<8:0)+(i+2<b.length?b[i+2]:0);s.push(m[(n>>18)&63],m[(n>>12)&63],m[(n>>6)&63],m[n&63]);}var r=b.length%3;pad=r===1?'==':r===2?'=':'';return s.join('').slice(0,s.length-(pad?pad.length:0))+(r?pad:'');},decodeBase64:function(s){var i,b=[],m={},str='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';for(i=0;i<64;i++)m[str[i]]=i;m['=']=0;s=s.replace(/[^A-Za-z0-9+/=]/g,'');for(i=0;i<s.length;i+=4){var n=(m[s[i]]<<18)+(m[s[i+1]]<<12)+(m[s[i+2]]<<6)+m[s[i+3]];b.push((n>>16)&255,(n>>8)&255,n&255);}var pad=s.slice(-2)==='=='?2:s.slice(-1)==='='?1:0;if(pad)b.length-=pad;return new Uint8Array(b);}};</script>
     <style>
-        .chat-bg { background-color: #f0f5f9; }
+        :root { --chat-bg: #f0f5f9; --bubble-out-bg: #d0e6f0; --bubble-out-text: #1f2937; --bubble-in-bg: #ffffff; --font-size: 14px; --font-family: system-ui, -apple-system, sans-serif; --chat-bg-image: none; --primary: #5a9fbc; --primary-dark: #4a87a0; --primary-light: #e8f4f8; }
+        html { font-size: var(--font-size); font-family: var(--font-family); }
+        .chat-bg { background: var(--chat-bg-image, var(--chat-bg)); background-size: cover; background-position: center; background-attachment: fixed; }
         .bubble { max-width: 80%; padding: 8px 14px; border-radius: 12px; margin-bottom: 6px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); word-break: break-word; }
-        .bubble-in { background: white; align-self: flex-start; border-top-left-radius: 4px; }
-        .bubble-out { background: #d0e6f0; align-self: flex-end; border-top-right-radius: 4px; }
+        .bubble-in { background: var(--bubble-in-bg); align-self: flex-start; border-top-left-radius: 4px; }
+        .bubble-out { background: var(--bubble-out-bg); color: var(--bubble-out-text); align-self: flex-end; border-top-right-radius: 4px; }
         .system-msg { align-self: center; background: #e1f3fb; font-size: 0.75rem; padding: 4px 14px; border-radius: 15px; margin: 8px 0; max-width: 90%; text-align: center; }
         .game-result { align-self: center; background: #fef9c3; border: 1px solid #fde047; color: #854d0e; font-weight: 600; padding: 10px 18px; border-radius: 16px; margin: 8px 0; font-size: 0.9rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .room-active { background: #e8f2f7 !important; border-left: 4px solid #5a9fbc; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
-        .ppt-btn { transition: all 0.15s; }
-        .ppt-btn:hover { transform: scale(1.05); }
-        .ppt-btn.selected { outline: 3px solid #5a9fbc; transform: scale(1.1); }
-        #sidebar { transition: transform 0.3s ease-in-out; }
-        #sidebar.open { transform: translateX(0); }
+        .room-active { background: #e8f2f7 !important; border-left: 4px solid var(--primary); }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #d1d9e6; border-radius: 8px; } ::-webkit-scrollbar-thumb:hover { background: #b0bec5; }
+        .ppt-btn { transition: all 0.15s; } .ppt-btn:hover { transform: scale(1.05); } .ppt-btn.selected { outline: 3px solid var(--primary); transform: scale(1.1); }
+        #sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); } #sidebar.open { transform: translateX(0); }
         @media (max-width: 767px) { #sidebar { transform: translateX(-100%); } }
-        button, a, input, select, textarea { touch-action: manipulation; }
+        button, input, select, textarea { touch-action: manipulation; }
         @media (max-width: 480px) { .bubble { max-width: 90%; padding: 6px 12px; } .game-result { padding: 8px 14px; font-size: 0.8rem; } }
         @media (max-width: 480px) { #gameMenu { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 320px; } }
         .bubble-scheduled { align-self: flex-end; background: #fef3c7; border: 1px solid #fbbf24; }
         .modal-open { overflow: hidden !important; }
-        #emojiPicker {
-            position: absolute; bottom: 100%; left: 0; margin-bottom: 6px; background: white;
-            border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.18); padding: 10px;
-            width: 328px; max-height: 260px; overflow-y: auto;
-            grid-template-columns: repeat(8, 1fr); gap: 2px; z-index: 60;
-            border: 1px solid #e5e7eb;
-        }
-        #emojiPicker:not(.hidden) { display: grid; }
-        #emojiPicker button { padding: 5px 4px; font-size: 1.3rem; border-radius: 6px; background: transparent; border: none; cursor: pointer; }
+        #emojiPicker { position: absolute; bottom: 100%; left: 0; margin-bottom: 6px; background: white; border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.18); padding: 10px; width: 328px; max-height: 260px; overflow-y: auto; grid-template-columns: repeat(8, 1fr); gap: 2px; z-index: 60; border: 1px solid #e5e7eb; }
+        #emojiPicker:not(.hidden) { display: grid; } #emojiPicker button { padding: 5px 4px; font-size: 1.3rem; border-radius: 6px; background: transparent; border: none; cursor: pointer; }
         #emojiPicker button:hover { background: #e8f5e9; }
-        .bubble-encrypted { opacity: 0.85; border-left: 3px solid #10b981; }
-        #loginScreen input:focus { outline: none; border-color: #5a9fbc; box-shadow: 0 0 0 3px rgba(90,159,188,0.2); }
-        .auth-tab { cursor: pointer; transition: all 0.2s; }
-        .auth-tab.active { border-bottom: 2px solid #5a9fbc; color: #5a9fbc; font-weight: 600; }
+        .bubble-encrypted { border-left: 3px solid #10b981; }
+        .theme-preset { width: 44px; height: 44px; border-radius: 12px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .theme-preset:hover { transform: scale(1.08); box-shadow: 0 4px 12px rgba(0,0,0,0.12); } .theme-preset.selected { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(90,159,188,0.2); }
+        .avatar-circle { width: 88px; height: 88px; border-radius: 50%; object-fit: cover; background: linear-gradient(135deg,#5a9fbc,#7ab8d4); display: flex; align-items: center; justify-content: center; color: white; font-size: 2.2rem; font-weight: bold; cursor: pointer; overflow: hidden; position: relative; box-shadow: 0 4px 12px rgba(90,159,188,0.3); transition: transform 0.2s, box-shadow 0.2s; }
+        .avatar-circle:hover { transform: scale(1.03); box-shadow: 0 6px 20px rgba(90,159,188,0.4); }
+        .avatar-circle:hover::after { content: '📷'; position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; backdrop-filter: blur(2px); }
+        #avatarUpload { display: none; }
+        .settings-tab { cursor: pointer; padding: 10px 14px; border-radius: 10px; transition: all 0.2s cubic-bezier(0.4,0,0.2,1); display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: #6b7b8d; }
+        .settings-tab:hover { background: #f1f5f9; color: #475569; } .settings-tab.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes modalSlideIn { from { opacity: 0; transform: scale(0.95) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes modalSlideOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.95) translateY(8px); } }
+        .modal-overlay { animation: fadeIn 0.2s ease-out; }
+        .modal-box { animation: modalSlideIn 0.25s cubic-bezier(0.4,0,0.2,1); }
+        .modal-box.closing { animation: modalSlideOut 0.15s ease-in forwards; }
+        input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; background: #e2e8f0; border-radius: 4px; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--primary); border-radius: 50%; cursor: pointer; box-shadow: 0 2px 6px rgba(90,159,188,0.3); transition: transform 0.15s; }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+        input:focus, textarea:focus, select:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px rgba(90,159,188,0.12) !important; outline: none !important; }
+        input, textarea, select { transition: border-color 0.2s, box-shadow 0.2s; }
+        ::selection { background: rgba(90,159,188,0.2); }
+        .settings-card { background: #f8fafb; border-radius: 12px; padding: 16px; border: 1px solid #eef2f6; }
     </style>
 </head>
 <body class="h-screen flex font-sans text-gray-900 overflow-hidden bg-gray-100">
 
-    <!-- ─── Login Screen ─── -->
-    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-100 p-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+    <!-- Login -->
+    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-[#e8f4f8] via-[#f0f5f9] to-[#d0e6f0] p-4 hidden">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7">
             <div class="text-center mb-6">
-                <img src="/static/icons/logo.svg" class="w-16 h-16 mx-auto mb-2" alt="Decidr">
-                <h1 class="text-2xl font-bold">Decidr</h1>
-                <p class="text-sm text-gray-500">Chat privado cifrado de extremo a extremo</p>
+                <div class="w-20 h-20 mx-auto mb-3 bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] rounded-2xl flex items-center justify-center shadow-lg shadow-[#5a9fbc]/20">
+                    <img src="/static/icons/logo.svg" class="w-12 h-12" alt="Decidr">
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900">Decidr</h1>
+                <p class="text-sm text-gray-500 mt-0.5">Chat privado cifrado</p>
             </div>
-            <div class="flex border-b border-gray-200 mb-5">
-                <div id="tabLogin" class="auth-tab active flex-1 text-center pb-2 text-sm text-gray-400" onclick="switchAuthTab('login')">Iniciar sesión</div>
-                <div id="tabRegister" class="auth-tab flex-1 text-center pb-2 text-sm text-gray-400" onclick="switchAuthTab('register')">Crear cuenta</div>
+            <div class="flex bg-gray-100 rounded-xl p-1 mb-5">
+                <div id="tabLogin" class="flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer" onclick="switchAuthTab('login')">Iniciar sesión</div>
+                <div id="tabRegister" class="flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer" onclick="switchAuthTab('register')">Crear cuenta</div>
             </div>
             <div id="loginForm">
-                <input id="loginUser" type="text" class="w-full border border-gray-300 rounded-xl px-4 py-3 mb-3 text-base" placeholder="Usuario" maxlength="20" autocomplete="username">
-                <input id="loginPass" type="password" class="w-full border border-gray-300 rounded-xl px-4 py-3 mb-4 text-base" placeholder="Contraseña" autocomplete="current-password">
-                <button id="authBtn" onclick="doLogin()" class="w-full bg-[#5a9fbc] text-white py-3 rounded-xl font-semibold hover:bg-[#4a7f9a] transition">Iniciar sesión</button>
-                <p class="text-center text-xs text-gray-400 mt-3">
-                    <span id="authToggleText">¿No tenés cuenta?</span>
-                    <a href="#" class="text-[#5a9fbc] hover:underline" onclick="switchAuthTab('register');return false" id="authToggleLink">Crear una</a>
-                </p>
+                <input id="loginUser" type="text" class="w-full border border-gray-200 rounded-xl px-4 py-3 mb-3 text-base outline-none bg-white" placeholder="Usuario" maxlength="20">
+                <input id="loginPass" type="password" class="w-full border border-gray-200 rounded-xl px-4 py-3 mb-4 text-base outline-none bg-white" placeholder="Contraseña">
+                <button id="authBtn" onclick="doLogin()" class="w-full bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white py-3 rounded-xl font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] transition shadow-sm">Iniciar sesión</button>
+                <p class="text-center text-xs text-gray-400 mt-3"><span id="authToggleText">¿No tenés cuenta?</span> <a href="#" class="text-[#5a9fbc] font-medium hover:underline" onclick="switchAuthTab('register');return false" id="authToggleLink">Crear una</a></p>
                 <p id="loginError" class="text-red-500 text-sm text-center mt-3 hidden"></p>
             </div>
             <div id="loginSpinner" class="hidden text-center py-6">
                 <div class="animate-spin w-10 h-10 border-4 border-[#5a9fbc] border-t-transparent rounded-full mx-auto mb-3"></div>
                 <p class="text-sm text-gray-500">Conectando...</p>
             </div>
-            <p class="text-center text-[10px] text-gray-400 mt-4">🔒 Cifrado de extremo a extremo</p>
         </div>
     </div>
 
-    <!-- Overlay mobile -->
+    <div id="appWrapper" class="hidden flex h-screen w-screen overflow-hidden">
     <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden" onclick="toggleSidebar()"></div>
-
-    <!-- ─── SIDEBAR ─── -->
     <aside id="sidebar" class="w-72 bg-white border-r border-gray-200 flex-col shrink-0 md:flex md:relative fixed inset-y-0 left-0 z-50 -translate-x-full md:translate-x-0">
-        <div class="bg-[#5a9fbc] text-white p-4 flex items-center gap-2">
+        <div class="bg-gradient-to-r from-[#5a9fbc] to-[#6aafcc] text-white p-4 flex items-center gap-2">
             <img src="/static/icons/logo.svg" class="w-8 h-8" alt="Decidr">
             <div class="flex-1 min-w-0">
                 <h1 class="font-bold text-lg leading-tight">Decidr</h1>
-                <span class="text-[10px] opacity-80">🔒 Cifrado E2EE</span>
+                <span class="text-[10px] opacity-80 font-medium">🔒 E2EE</span>
             </div>
         </div>
-        <div class="p-3 border-b border-gray-200 flex items-center gap-2">
-            <input id="roomSearch" type="text" class="flex-1 bg-gray-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#5a9fbc]" placeholder="Buscar grupo...">
-            <button onclick="showCreateRoomModal()" class="w-9 h-9 rounded-full bg-[#5a9fbc] text-white flex items-center justify-center text-lg hover:bg-[#4a7f9a] shrink-0" title="Crear grupo">+</button>
+        <div class="p-3 border-b border-gray-100 flex items-center gap-2">
+            <input id="roomSearch" type="text" class="flex-1 bg-gray-100/80 rounded-lg px-3 py-2.5 text-sm outline-none border border-transparent focus:border-[#5a9fbc] focus:bg-white transition" placeholder="Buscar grupo...">
+            <button onclick="showCreateRoomModal()" class="w-9 h-9 rounded-full bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] text-white flex items-center justify-center text-lg hover:shadow-md shrink-0 transition" title="Crear grupo">+</button>
         </div>
-        <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mis grupos</div>
+        <div class="px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mis grupos</div>
         <div id="roomList" class="flex-1 overflow-y-auto"></div>
-        <div class="border-t border-gray-200">
-            <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">En línea</div>
+        <div class="px-3 py-2 border-t border-gray-100">
+            <div class="flex items-center gap-2">
+                <input id="contactSearch" type="text" class="flex-1 bg-gray-100/80 rounded-lg px-3 py-2 text-xs outline-none border border-transparent focus:border-[#5a9fbc] focus:bg-white transition" placeholder="Buscar usuarios..." oninput="searchUsers(this.value)">
+            </div>
+            <div id="contactResults" class="hidden mt-1 max-h-32 overflow-y-auto rounded-lg bg-white border border-gray-100 shadow-sm"></div>
+        </div>
+        <div class="border-t border-gray-100">
+            <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
+                <span>En línea</span>
+                <button onclick="refreshOnlineUsers()" class="text-gray-300 hover:text-gray-500 text-xs transition">↻</button>
+            </div>
             <div id="onlineUsers" class="max-h-28 overflow-y-auto"></div>
         </div>
-        <div class="p-3 border-t border-gray-200 space-y-2">
-            <div class="flex items-center gap-2 text-sm text-gray-600">
-                <span>👤</span>
-                <span id="myUsername" class="font-semibold truncate flex-1"></span>
-                <span class="text-xs" title="Cifrado E2EE activo">🔒</span>
+        <div class="p-3 border-t border-gray-100 bg-gray-50/30">
+            <div class="flex items-center gap-2 mb-2">
+                <div id="myAvatarSmall" class="w-9 h-9 rounded-full bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] flex items-center justify-center text-white text-xs font-bold shrink-0 cursor-pointer shadow-sm" onclick="showProfileModal()"></div>
+                <span id="myUsername" class="font-semibold text-sm truncate flex-1 cursor-pointer hover:text-[#5a9fbc] transition" onclick="showProfileModal()"></span>
+                <button onclick="showSettingsModal()" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200 flex items-center justify-center text-sm transition hover:shadow-sm" title="Configuración">⚙️</button>
             </div>
-            <button onclick="logout()" class="w-full bg-gray-200 text-gray-600 rounded-lg py-2 text-sm font-semibold hover:bg-gray-300 transition">
-                Cerrar sesión
-            </button>
+            <button onclick="logout()" class="w-full bg-gray-200/70 text-gray-500 rounded-lg py-1.5 text-xs font-semibold hover:bg-gray-300 hover:text-gray-700 transition">Cerrar sesión</button>
         </div>
     </aside>
 
-    <!-- ─── MAIN ─── -->
+    <!-- Main -->
     <div class="flex-1 flex flex-col max-w-full">
-        <nav class="bg-[#5a9fbc] text-white px-4 py-2 flex items-center justify-between shrink-0 gap-2">
+        <nav class="bg-gradient-to-r from-[#5a9fbc] to-[#6aafcc] text-white px-4 py-2.5 flex items-center justify-between shrink-0 gap-2 shadow-sm">
             <div class="flex items-center gap-3 min-w-0">
-                <button onclick="toggleSidebar()" class="md:hidden w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/20 transition" aria-label="Menú">☰</button>
-                <img src="/static/icons/logo.svg" class="w-9 h-9 shrink-0 rounded-full bg-white/20" alt="Decidr">
+                <button onclick="toggleSidebar()" class="md:hidden w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/20 transition active:scale-95" aria-label="Menú">☰</button>
+                <div class="w-9 h-9 shrink-0 rounded-xl bg-white/20 flex items-center justify-center">
+                    <img src="/static/icons/logo.svg" class="w-6 h-6" alt="Decidr">
+                </div>
                 <div class="min-w-0">
                     <h1 class="font-bold leading-tight text-sm truncate" id="roomTitle">General</h1>
-                    <p class="text-[10px] opacity-80" id="roomStatus">🔒 Cifrado</p>
+                    <p class="text-[10px] opacity-80 font-medium" id="roomStatus">🔒 Cifrado</p>
                 </div>
             </div>
-            <div class="flex gap-2 items-center relative shrink-0">
-                <button onclick="toggleMenu()" class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition text-lg" title="Juegos">🎮</button>
-                <button onclick="toggleScheduleModal()" class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition text-lg" title="Programar">📅</button>
+            <div class="flex gap-1.5 items-center relative shrink-0">
+                <button onclick="toggleMenu()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Juegos">🎮</button>
+                <button onclick="toggleScheduleModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Programar">📅</button>
+                <div class="relative"><button onclick="toggleCallPicker(false)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Llamada de voz">📞</button></div>
                 <div class="relative">
-                    <button onclick="toggleCallPicker(false)" class="w-9 h-9 rounded-full bg-white/20 hover:bg-green-400/40 flex items-center justify-center transition text-lg" title="Llamada de voz">📞</button>
+                    <button onclick="toggleCallPicker(true)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Videollamada">📹</button>
+                    <div id="callPicker" class="hidden absolute right-0 top-11 bg-white shadow-2xl rounded-xl z-50 py-1 w-48 border border-gray-100 max-h-64 overflow-y-auto"></div>
                 </div>
-                <div class="relative">
-                    <button onclick="toggleCallPicker(true)" class="w-9 h-9 rounded-full bg-white/20 hover:bg-red-400/40 flex items-center justify-center transition text-lg" title="Videollamada">📹</button>
-                    <div id="callPicker" class="hidden absolute right-0 top-10 bg-white shadow-2xl rounded-xl z-50 py-1 w-48 border border-gray-200 max-h-64 overflow-y-auto"></div>
-                </div>
-                <div id="gameMenu" class="hidden absolute right-0 top-10 bg-white shadow-2xl rounded-xl z-50 p-1.5 w-64 border border-gray-200">
+                <div id="gameMenu" class="hidden absolute right-0 top-11 bg-white shadow-2xl rounded-xl z-50 p-1.5 w-64 border border-gray-100">
                     <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Decisiones</div>
-                    <button onclick="sendAction('dados')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
-                        <span class="text-2xl">🎲</span>
-                        <div><div class="font-semibold text-sm">Dado más alto</div><div class="text-[10px] text-gray-400">Tirá el dado, que gane el mejor</div></div>
-                    </button>
-                    <button onclick="sendAction('palito')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
-                        <span class="text-2xl">🪵</span>
-                        <div><div class="font-semibold text-sm">Palito más largo</div><div class="text-[10px] text-gray-400">Cada uno saca, se compara</div></div>
-                    </button>
-                    <button onclick="startPPT()" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
-                        <span class="text-2xl">✊</span>
-                        <div><div class="font-semibold text-sm">Piedra, Papel o Tijera</div><div class="text-[10px] text-gray-400">Duelo 1 vs 1</div></div>
-                    </button>
-                    <button onclick="startPapelitos()" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
-                        <span class="text-2xl">📝</span>
-                        <div><div class="font-semibold text-sm">Papelitos</div><div class="text-[10px] text-gray-400">Todos meten opciones, se sortea</div></div>
-                    </button>
-                    <button onclick="sendAction('palabras')" class="w-full text-left p-2.5 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition">
-                        <span class="text-2xl">🔤</span>
-                        <div><div class="font-semibold text-sm">Palabras al azar</div><div class="text-[10px] text-gray-400">Sacá una palabra del pool</div></div>
-                    </button>
+                    <button onclick="sendAction('dados')" class="w-full text-left p-2.5 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition"><span class="text-2xl">🎲</span><div><div class="font-semibold text-sm text-gray-800">Dado más alto</div><div class="text-[10px] text-gray-400">Tirá el dado</div></div></button>
+                    <button onclick="sendAction('palito')" class="w-full text-left p-2.5 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition"><span class="text-2xl">🪵</span><div><div class="font-semibold text-sm text-gray-800">Palito más largo</div><div class="text-[10px] text-gray-400">Se compara</div></div></button>
+                    <button onclick="startPPT()" class="w-full text-left p-2.5 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition"><span class="text-2xl">✊</span><div><div class="font-semibold text-sm text-gray-800">Piedra Papel Tijera</div><div class="text-[10px] text-gray-400">Duelo 1 vs 1</div></div></button>
+                    <button onclick="startPapelitos()" class="w-full text-left p-2.5 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition"><span class="text-2xl">📝</span><div><div class="font-semibold text-sm text-gray-800">Papelitos</div><div class="text-[10px] text-gray-400">Se sortea</div></div></button>
+                    <button onclick="sendAction('palabras')" class="w-full text-left p-2.5 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition"><span class="text-2xl">🔤</span><div><div class="font-semibold text-sm text-gray-800">Palabras al azar</div><div class="text-[10px] text-gray-400">Sacá una palabra</div></div></button>
                 </div>
             </div>
         </nav>
 
-        <!-- Chat -->
         <main id="chat" class="flex-1 overflow-y-auto p-4 flex flex-col chat-bg space-y-1">
             <div class="system-msg italic">🔒 Conectando...</div>
         </main>
 
-        <!-- Video Call -->
         <div id="videoContainer" class="hidden flex-1 relative bg-black">
             <video id="remoteVideo" class="absolute inset-0 w-full h-full object-contain" autoplay playsinline></video>
             <video id="localVideo" class="absolute bottom-4 right-4 w-28 h-44 object-cover rounded-xl shadow-2xl border-2 border-white z-10" autoplay playsinline muted></video>
@@ -175,572 +170,467 @@
 
         <div id="papelitoInput" class="hidden bg-blue-50 px-4 py-3 border-t border-blue-200 flex flex-col gap-2 shadow-inner">
             <p class="text-[10px] font-bold text-blue-700 uppercase">📝 Papelitos</p>
-            <div class="flex gap-2">
-                <input id="paperText" type="text" class="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-base focus:ring-2 focus:ring-blue-400 outline-none" placeholder="Escribí tu opción...">
-                <button onclick="addPaper()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700">Meter</button>
-                <button onclick="drawPaper()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700">Sortear</button>
-            </div>
+            <div class="flex gap-2"><input id="paperText" type="text" class="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-base outline-none" placeholder="Opción..."><button onclick="addPaper()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">Meter</button><button onclick="drawPaper()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700">Sortear</button></div>
         </div>
         <div id="pptInput" class="hidden bg-purple-50 px-4 py-3 border-t border-purple-200 flex flex-col gap-2 shadow-inner">
             <p class="text-[10px] font-bold text-purple-700 uppercase">✊ PPT</p>
             <div class="flex gap-2 justify-center">
-                <button onclick="pptChoose('piedra')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20">
-                    <span class="text-3xl">✊</span>
-                    <span class="text-[10px] font-semibold text-purple-700">Piedra</span>
-                </button>
-                <button onclick="pptChoose('papel')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20">
-                    <span class="text-3xl">✋</span>
-                    <span class="text-[10px] font-semibold text-purple-700">Papel</span>
-                </button>
-                <button onclick="pptChoose('tijera')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20">
-                    <span class="text-3xl">✌️</span>
-                    <span class="text-[10px] font-semibold text-purple-700">Tijera</span>
-                </button>
+                <button onclick="pptChoose('piedra')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20"><span class="text-3xl">✊</span><span class="text-[10px] text-purple-700">Piedra</span></button>
+                <button onclick="pptChoose('papel')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20"><span class="text-3xl">✋</span><span class="text-[10px] text-purple-700">Papel</span></button>
+                <button onclick="pptChoose('tijera')" class="ppt-btn bg-white border-2 border-purple-300 rounded-xl p-3 flex flex-col items-center gap-1 hover:bg-purple-100 w-20"><span class="text-3xl">✌️</span><span class="text-[10px] text-purple-700">Tijera</span></button>
             </div>
         </div>
         <div id="palabrasInput" class="hidden bg-orange-50 px-4 py-3 border-t border-orange-200 flex flex-col gap-2 shadow-inner">
             <p class="text-[10px] font-bold text-orange-700 uppercase">🔤 Palabras</p>
-            <div class="flex gap-2">
-                <button onclick="sendAction('palabras')" class="flex-1 bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-700">Sacar</button>
-                <button onclick="startReassign()" class="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-600">Asignar</button>
-            </div>
-            <div id="reassignRow" class="hidden flex gap-2">
-                <input id="reassignTarget" type="text" class="flex-1 border border-orange-300 rounded-lg px-3 py-2 text-base outline-none" placeholder="Nombre...">
-                <button onclick="doReassign()" class="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Asignar</button>
-            </div>
+            <div class="flex gap-2"><button onclick="sendAction('palabras')" class="flex-1 bg-orange-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-700">Sacar</button><button onclick="startReassign()" class="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-600">Asignar</button></div>
+            <div id="reassignRow" class="hidden flex gap-2"><input id="reassignTarget" type="text" class="flex-1 border border-orange-300 rounded-lg px-3 py-2 text-base outline-none" placeholder="Nombre..."><button onclick="doReassign()" class="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm">Asignar</button></div>
         </div>
 
-        <footer class="bg-[#f0f0f0] px-4 py-2 flex items-center gap-2 border-t border-gray-300 relative">
+        <footer class="bg-white/95 backdrop-blur-sm px-4 py-2.5 flex items-center gap-2 border-t border-gray-200 relative shadow-inner">
             <div class="relative">
-                <button onclick="toggleEmojiPicker()" class="text-gray-500 text-2xl px-1 hover:text-gray-700" id="emojiBtn">😊</button>
+                <button onclick="toggleEmojiPicker()" class="text-gray-500 text-2xl px-1 hover:text-gray-700 transition" id="emojiBtn">😊</button>
                 <div id="emojiPicker" class="hidden"></div>
             </div>
-            <input id="input" type="text" class="flex-1 bg-white border-none rounded-full px-4 py-2.5 outline-none shadow-sm text-base" placeholder="Mensaje cifrado...">
-            <button onclick="sendText()" class="bg-[#5a9fbc] text-white w-11 h-11 rounded-full flex items-center justify-center shadow-md hover:bg-[#4a7f9a] active:scale-95 transition shrink-0">
-                <span class="text-lg">➤</span>
-            </button>
-            <span id="e2eeIndicator" class="text-[10px] text-green-600 absolute -top-3 right-4 bg-white px-2 rounded-t-md border border-gray-200 border-b-0">🔒 E2EE</span>
+            <input id="input" type="text" class="flex-1 bg-gray-100 border border-gray-200 rounded-full px-4 py-2.5 outline-none text-base focus:bg-white focus:border-[#5a9fbc] transition" placeholder="Mensaje cifrado...">
+            <button onclick="sendText()" class="bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white w-11 h-11 rounded-full flex items-center justify-center shadow-md hover:shadow-lg active:scale-95 transition shrink-0">➤</button>
+            <span class="text-[10px] text-green-600 absolute -top-2.5 right-4 bg-white px-2.5 rounded-t-md border border-gray-200 border-b-0 font-medium">🔒 E2EE</span>
         </footer>
+    </div>
     </div>
 
     <!-- Modals -->
-    <div id="incomingCallModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+    <div id="incomingCallModal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
             <div class="text-5xl mb-3">📞</div>
             <p class="text-lg font-bold mb-1">Llamada entrante</p>
             <p id="incomingCaller" class="text-gray-500 mb-6">...</p>
-            <div class="flex gap-3 justify-center">
-                <button onclick="rejectCall()" class="bg-red-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-red-600 active:scale-95 transition">✕</button>
-                <button onclick="acceptCall()" class="bg-green-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-green-600 active:scale-95 transition">✓</button>
-            </div>
+            <div class="flex gap-4 justify-center"><button onclick="rejectCall()" class="bg-red-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-red-600 active:scale-95 transition hover:shadow-xl">✕</button><button onclick="acceptCall()" class="bg-green-500 text-white w-16 h-16 rounded-full text-2xl shadow-lg hover:bg-green-600 active:scale-95 transition hover:shadow-xl">✓</button></div>
         </div>
     </div>
-
-    <div id="callBar" class="hidden fixed top-0 left-0 right-0 z-50 bg-green-700 text-white px-4 py-2 flex items-center justify-between shadow-lg" style="margin-top: env(safe-area-inset-top, 0px);">
-        <div class="flex items-center gap-2 min-w-0">
-            <span class="text-lg shrink-0">📞</span>
-            <span id="callStatus" class="text-sm font-semibold truncate">...</span>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-            <button onclick="toggleVideo()" id="toggleVideoBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition hidden">📹</button>
-            <button onclick="toggleMute()" id="muteBtn" class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition">🎤</button>
-            <button onclick="endCall()" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-lg transition">✕</button>
-        </div>
+    <div id="callBar" class="hidden fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-green-700 to-green-600 text-white px-4 py-2 flex items-center justify-between shadow-lg" style="margin-top: env(safe-area-inset-top, 0px);">
+        <div class="flex items-center gap-2 min-w-0"><span class="text-lg shrink-0">📞</span><span id="callStatus" class="text-sm font-semibold truncate">...</span></div>
+        <div class="flex items-center gap-2 shrink-0"><button onclick="toggleVideo()" id="toggleVideoBtn" class="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition hidden">📹</button><button onclick="toggleMute()" id="muteBtn" class="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg transition">🎤</button><button onclick="endCall()" class="w-10 h-10 rounded-xl bg-red-600 hover:bg-red-700 flex items-center justify-center text-lg transition">✕</button></div>
     </div>
-
     <audio id="remoteAudio" autoplay></audio>
 
-    <div id="scheduleModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)toggleScheduleModal()">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="font-bold text-lg">📅 Programar</h2>
-                <button onclick="toggleScheduleModal()" class="text-2xl leading-none text-gray-400 hover:text-gray-600">&times;</button>
-            </div>
-            <textarea id="scheduleContent" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-base resize-none h-24 outline-none" placeholder="Mensaje..."></textarea>
-            <div class="mt-3">
-                <label class="text-xs font-semibold text-gray-500 uppercase">Para</label>
-                <select id="scheduleTarget" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-base mt-1 outline-none"></select>
-            </div>
-            <div class="mt-3">
-                <label class="text-xs font-semibold text-gray-500 uppercase">Fecha</label>
-                <input id="scheduleDatetime" type="datetime-local" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-base mt-1 outline-none">
-            </div>
-            <div class="flex gap-2 mt-5">
-                <button onclick="toggleScheduleModal()" class="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-semibold text-sm hover:bg-gray-50">Cancelar</button>
-                <button onclick="doSchedule()" class="flex-1 py-2.5 rounded-xl bg-[#5a9fbc] text-white font-semibold text-sm hover:bg-[#4a7f9a]">Programar</button>
-            </div>
+    <!-- Schedule Modal -->
+    <div id="scheduleModal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)toggleScheduleModal()">
+        <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-md p-5">
+            <div class="flex justify-between items-center mb-4"><h2 class="font-bold text-lg">📅 Programar</h2><button onclick="toggleScheduleModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition">✕</button></div>
+            <textarea id="scheduleContent" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base resize-none h-24 outline-none" placeholder="Mensaje..."></textarea>
+            <div class="mt-3"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Para</label><select id="scheduleTarget" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none"></select></div>
+            <div class="mt-3"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fecha</label><input id="scheduleDatetime" type="datetime-local" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none"></div>
+            <div class="flex gap-2 mt-5"><button onclick="toggleScheduleModal()" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 hover:border-gray-300 transition">Cancelar</button><button onclick="doSchedule()" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white text-sm font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] shadow-sm transition">Programar</button></div>
         </div>
     </div>
 
     <!-- Create Room Modal -->
-    <div id="createRoomModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)hideCreateRoomModal()">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="font-bold text-lg">Nuevo grupo</h2>
-                <button onclick="hideCreateRoomModal()" class="text-2xl leading-none text-gray-400 hover:text-gray-600">&times;</button>
-            </div>
-            <input id="newRoomName" type="text" class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base mb-4 outline-none focus:ring-2 focus:ring-[#5a9fbc]" placeholder="Nombre del grupo" maxlength="50">
-            <button onclick="createRoom()" class="w-full bg-[#5a9fbc] text-white py-3 rounded-xl font-semibold hover:bg-[#4a7f9a] transition">Crear grupo</button>
+    <div id="createRoomModal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)hideCreateRoomModal()">
+        <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+            <div class="flex justify-between items-center mb-4"><h2 class="font-bold text-lg">Nuevo grupo</h2><button onclick="hideCreateRoomModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition">✕</button></div>
+            <input id="newRoomName" type="text" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-base mb-4 outline-none" placeholder="Nombre del grupo" maxlength="50">
+            <button onclick="createRoom()" class="w-full bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white py-3 rounded-xl font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] shadow-sm transition">Crear grupo</button>
             <p id="roomError" class="text-red-500 text-sm text-center mt-3 hidden"></p>
         </div>
     </div>
 
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)hideProfileModal()">
+        <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onclick="event.stopPropagation()">
+            <div class="relative bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] px-6 pt-10 pb-14 text-center">
+                <button onclick="hideProfileModal()" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white text-lg transition backdrop-blur-sm">✕</button>
+                <div class="flex flex-col items-center">
+                    <div id="avatarPreview" class="avatar-circle mb-3 ring-4 ring-white/60" onclick="document.getElementById('avatarUpload').click()">
+                        <span id="avatarInitials">?</span>
+                        <img id="avatarImg" class="hidden w-full h-full object-cover" alt="avatar">
+                    </div>
+                    <input id="avatarUpload" type="file" accept="image/jpeg,image/png,image/webp" onchange="uploadAvatar(event)">
+                    <p class="text-xs text-white/75 font-medium">Tocá para cambiar foto</p>
+                </div>
+            </div>
+            <div class="px-6 pb-6 -mt-8">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+                    <div>
+                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between"><span>Nombre</span><span class="text-gray-300 font-normal normal-case" id="nameCount">0/30</span></label>
+                        <input id="profileName" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none" maxlength="30" oninput="updateProfileCounts()">
+                    </div>
+                    <div>
+                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between"><span>Bio</span><span class="text-gray-300 font-normal normal-case" id="bioCount">0/150</span></label>
+                        <textarea id="profileBio" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base resize-none h-20 mt-1.5 outline-none" maxlength="150" oninput="updateProfileCounts()"></textarea>
+                    </div>
+                    <div class="flex gap-2 pt-1">
+                        <button onclick="hideProfileModal()" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 hover:border-gray-300 transition">Cancelar</button>
+                        <button onclick="saveProfile()" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white text-sm font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] shadow-sm transition">Guardar</button>
+                    </div>
+                    <p id="profileError" class="text-red-500 text-sm text-center hidden"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)hideSettingsModal()">
+        <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" style="max-height: 85vh;" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <h2 class="font-bold text-lg text-gray-900">Configuración</h2>
+                <button onclick="hideSettingsModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition">✕</button>
+            </div>
+            <div class="flex" style="min-height: 380px;">
+                <div class="w-40 border-r border-gray-100 p-3 space-y-1 shrink-0 bg-gray-50/50">
+                    <div class="settings-tab active" onclick="switchSettingsTab('appearance',this)">
+                        <span class="text-lg">🎨</span>
+                        <span>Apariencia</span>
+                    </div>
+                    <div class="settings-tab" onclick="switchSettingsTab('privacy',this)">
+                        <span class="text-lg">🔒</span>
+                        <span>Privacidad</span>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                    <!-- Appearance -->
+                    <div id="settingsAppearance" class="space-y-5">
+                        <div class="settings-card">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Fondo del chat</p>
+                            <div class="flex flex-wrap gap-2.5" id="wallpaperPresets">
+                                <div class="theme-preset selected" style="background:#f0f5f9" data-wallpaper="#f0f5f9" onclick="selectWallpaper(this)" title="Claro"></div>
+                                <div class="theme-preset" style="background:#1a1a2e" data-wallpaper="#1a1a2e" onclick="selectWallpaper(this)" title="Noche"></div>
+                                <div class="theme-preset" style="background:#0d1b2a" data-wallpaper="#0d1b2a" onclick="selectWallpaper(this)" title="Oscuro"></div>
+                                <div class="theme-preset" style="background:#2d4a22" data-wallpaper="#2d4a22" onclick="selectWallpaper(this)" title="Bosque"></div>
+                                <div class="theme-preset" style="background:#4a235a" data-wallpaper="#4a235a" onclick="selectWallpaper(this)" title="Púrpura"></div>
+                                <div class="theme-preset" style="background:#5c4033" data-wallpaper="#5c4033" onclick="selectWallpaper(this)" title="Marrón"></div>
+                                <div class="theme-preset" style="background:linear-gradient(135deg,#667eea,#764ba2)" data-wallpaper="linear-gradient(135deg,#667eea,#764ba2)" onclick="selectWallpaper(this)" title="Grad. púrpura"></div>
+                                <div class="theme-preset" style="background:linear-gradient(135deg,#f093fb,#f5576c)" data-wallpaper="linear-gradient(135deg,#f093fb,#f5576c)" onclick="selectWallpaper(this)" title="Grad. rosa"></div>
+                                <div class="theme-preset" style="background:linear-gradient(135deg,#4facfe,#00f2fe)" data-wallpaper="linear-gradient(135deg,#4facfe,#00f2fe)" onclick="selectWallpaper(this)" title="Grad. azul"></div>
+                                <div class="theme-preset flex items-center justify-center text-xl bg-gray-100 border-2 border-dashed border-gray-300 hover:border-[#5a9fbc] text-gray-400 hover:text-[#5a9fbc]" onclick="document.getElementById('wallpaperUpload').click()" title="Subir imagen">+</div>
+                            </div>
+                            <input id="wallpaperUpload" type="file" accept="image/*" class="hidden" onchange="uploadWallpaper(event)">
+                        </div>
+
+                        <div class="settings-card">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Color de burbuja</p>
+                            <div class="flex flex-wrap gap-2.5">
+                                <div class="theme-preset selected" style="background:#d0e6f0" data-color="#d0e6f0" onclick="selectBubbleColor(this)" title="Azul"></div>
+                                <div class="theme-preset" style="background:#b9f6ca" data-color="#b9f6ca" onclick="selectBubbleColor(this)" title="Verde"></div>
+                                <div class="theme-preset" style="background:#ffccbc" data-color="#ffccbc" onclick="selectBubbleColor(this)" title="Durazno"></div>
+                                <div class="theme-preset" style="background:#e1bee7" data-color="#e1bee7" onclick="selectBubbleColor(this)" title="Lavanda"></div>
+                                <div class="theme-preset" style="background:#bbdefb" data-color="#bbdefb" onclick="selectBubbleColor(this)" title="Celeste"></div>
+                                <div class="theme-preset" style="background:#fff9c4" data-color="#fff9c4" onclick="selectBubbleColor(this)" title="Amarillo"></div>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Tamaño de fuente</p>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs text-gray-400 font-medium">A</span>
+                                <input type="range" id="fontSizeSlider" min="12" max="20" value="14" class="flex-1" oninput="applyFontSize(this.value)">
+                                <span class="text-lg text-gray-500 font-medium">A</span>
+                                <span id="fontSizeLabel" class="text-xs font-semibold text-[#5a9fbc] bg-[#e8f4f8] px-2 py-0.5 rounded-md min-w-[40px] text-center">14px</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Fuente</p>
+                            <select id="fontFamilySelect" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base outline-none bg-white" onchange="applyFontFamily(this.value)">
+                                <option value="system-ui, -apple-system, sans-serif">Sistema</option>
+                                <option value="'Segoe UI', Roboto, sans-serif">Segoe UI</option>
+                                <option value="'Helvetica Neue', Arial, sans-serif">Helvetica</option>
+                                <option value="Georgia, serif">Georgia</option>
+                                <option value="'Courier New', monospace">Courier New</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Privacy -->
+                    <div id="settingsPrivacy" class="hidden space-y-3">
+                        <div class="settings-card">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Usuarios bloqueados</p>
+                            <div id="blockedUsersList">
+                                <p class="text-sm text-gray-400">Cargando...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        let token = localStorage.getItem('decidr_token');
-        let myUsername = localStorage.getItem('decidr_username') || '';
-        let myUserId = null;
-        let clientId = myUsername;
-        let authMode = 'login';
+        let token=localStorage.getItem('decidr_token');
+        let myUsername=localStorage.getItem('decidr_username')||'';
+        let myUserId=null, clientId=myUsername, authMode='login';
+        let chat=null, currentRoom='default_room', currentRoomName='General', pptChosen=false, connectedUsers=[], myRooms=[], ws=null, hasRoomKey=false, roomKeyRequested=false;
+        let myProfileData={display_name:'',bio:'',avatar:null};
 
         // ─── Crypto ───
-        const Crypto = {
-            keyPair: null, roomKeys: {}, peerKeys: {},
-            init() {
-                const stored = localStorage.getItem('decidr_keys');
-                if (stored) { try { const d = JSON.parse(stored); this.keyPair = { secretKey: nacl.util.decodeBase64(d.secretKey), publicKey: nacl.util.decodeBase64(d.publicKey) }; } catch(e) { this.generateKeys(); } }
-                else { this.generateKeys(); }
-                const rk = localStorage.getItem('decidr_room_keys');
-                if (rk) { try { const d = JSON.parse(rk); for (const [r, k] of Object.entries(d)) this.roomKeys[r] = nacl.util.decodeBase64(k); } catch(e) {} }
-            },
-            generateKeys() { this.keyPair = nacl.box.keyPair(); localStorage.setItem('decidr_keys', JSON.stringify({ secretKey: nacl.util.encodeBase64(this.keyPair.secretKey), publicKey: nacl.util.encodeBase64(this.keyPair.publicKey) })); },
-            getPublicKey() { return nacl.util.encodeBase64(this.keyPair.publicKey); },
-            getRoomKey(room) { return this.roomKeys[room] || null; },
-            setRoomKey(room, key) { this.roomKeys[room] = key; this._saveRoomKeys(); },
-            generateRoomKey() { return nacl.randomBytes(nacl.secretbox.keyLength); },
-            encryptMessage(room, msg) {
-                const key = this.roomKeys[room]; if (!key) return null;
-                const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-                const enc = nacl.secretbox(nacl.util.decodeUTF8(msg), nonce, key);
-                return { ciphertext: nacl.util.encodeBase64(enc), nonce: nacl.util.encodeBase64(nonce) };
-            },
-            decryptMessage(room, ct, n) {
-                const key = this.roomKeys[room]; if (!key) return null;
-                const dec = nacl.secretbox.open(nacl.util.decodeBase64(ct), nacl.util.decodeBase64(n), key);
-                return dec ? nacl.util.encodeUTF8(dec) : null;
-            },
-            encryptRoomKeyFor(roomKey, pubKey) {
-                const nonce = nacl.randomBytes(nacl.box.nonceLength);
-                const enc = nacl.box(roomKey, nonce, nacl.util.decodeBase64(pubKey), this.keyPair.secretKey);
-                return { encrypted: nacl.util.encodeBase64(enc), nonce: nacl.util.encodeBase64(nonce) };
-            },
-            decryptRoomKey(encB64, nonceB64, senderPubB64) {
-                return nacl.box.open(nacl.util.decodeBase64(encB64), nacl.util.decodeBase64(nonceB64), nacl.util.decodeBase64(senderPubB64), this.keyPair.secretKey);
-            },
-            _saveRoomKeys() { const d = {}; for (const [r, k] of Object.entries(this.roomKeys)) d[r] = nacl.util.encodeBase64(k); localStorage.setItem('decidr_room_keys', JSON.stringify(d)); }
+        const Crypto={keyPair:null,roomKeys:{},peerKeys:{},
+            init(){if(localStorage.getItem('decidr_key_ver')!=='2'){localStorage.removeItem('decidr_keys');localStorage.removeItem('decidr_room_keys');localStorage.setItem('decidr_key_ver','2');}const s=localStorage.getItem('decidr_keys');if(s){try{const d=JSON.parse(s);this.keyPair={secretKey:nacl.util.decodeBase64(d.secretKey),publicKey:nacl.util.decodeBase64(d.publicKey)};}catch(e){this.generateKeys();}}else this.generateKeys();const rk=localStorage.getItem('decidr_room_keys');if(rk)try{const d=JSON.parse(rk);for(const[r,k]of Object.entries(d))this.roomKeys[r]=nacl.util.decodeBase64(k);}catch(e){this.roomKeys={};}this._selfTest();},
+            _selfTest(){try{var tk=nacl.randomBytes(nacl.secretbox.keyLength);this.roomKeys['__test__']=tk;var e=this.encryptMessage('__test__','hello');if(!e)return console.warn('CRYPTO: ENCRYPT NULL');var d=this.decryptMessage('__test__',e.ciphertext,e.nonce);console.log('CRYPTO: '+(d==='hello'?'OK':'MISMATCH'));delete this.roomKeys['__test__'];}catch(ex){console.error('CRYPTO: ERROR',ex);}},
+            generateKeys(){this.keyPair=nacl.box.keyPair();localStorage.setItem('decidr_keys',JSON.stringify({secretKey:nacl.util.encodeBase64(this.keyPair.secretKey),publicKey:nacl.util.encodeBase64(this.keyPair.publicKey)}));},
+            getPublicKey(){return nacl.util.encodeBase64(this.keyPair.publicKey);},
+            getRoomKey(r){return this.roomKeys[r]||null;},
+            setRoomKey(r,k){this.roomKeys[r]=k;this._saveRoomKeys();},
+            generateRoomKey(){return nacl.randomBytes(nacl.secretbox.keyLength);},
+            encryptMessage(r,m){const k=this.roomKeys[r];if(!k)return null;const n=nacl.randomBytes(nacl.secretbox.nonceLength),e=nacl.secretbox(nacl.util.decodeUTF8(m),n,k);return{ciphertext:nacl.util.encodeBase64(e),nonce:nacl.util.encodeBase64(n)};},
+            decryptMessage(r,c,n){const k=this.roomKeys[r];if(!k)return null;const d=nacl.secretbox.open(nacl.util.decodeBase64(c),nacl.util.decodeBase64(n),k);return d?nacl.util.encodeUTF8(d):null;},
+            encryptRoomKeyFor(rk,pk){const n=nacl.randomBytes(nacl.box.nonceLength),e=nacl.box(rk,n,pk,this.keyPair.secretKey);return{encrypted:nacl.util.encodeBase64(e),nonce:nacl.util.encodeBase64(n)};},
+            decryptRoomKey(eb,nb,sb){return nacl.box.open(nacl.util.decodeBase64(eb),nacl.util.decodeBase64(nb),nacl.util.decodeBase64(sb),this.keyPair.secretKey);},
+            _saveRoomKeys(){const d={};for(const[r,k]of Object.entries(this.roomKeys))d[r]=nacl.util.encodeBase64(k);localStorage.setItem('decidr_room_keys',JSON.stringify(d));}
         };
 
-        // ─── State ───
-        let chat = null;
-        let currentRoom = 'default_room';
-        let currentRoomName = 'General';
-        let pptChosen = false;
-        let connectedUsers = [];
-        let myRooms = [];
-        let ws = null;
-        let hasRoomKey = false;
-        let roomKeyRequested = false;
+        // ─── Theme ───
+        function loadTheme(){try{const t=JSON.parse(localStorage.getItem('decidr_theme'));if(t){document.documentElement.style.setProperty('--chat-bg',t.bg||'#f0f5f9');document.documentElement.style.setProperty('--chat-bg-image',t.bgImage||'none');document.documentElement.style.setProperty('--bubble-out-bg',t.bubbleColor||'#d0e6f0');document.documentElement.style.setProperty('--font-size',(t.fontSize||14)+'px');document.documentElement.style.setProperty('--font-family',t.fontFamily||'system-ui, -apple-system, sans-serif');}}catch(e){}}
+        function saveTheme(){const t={bg:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg').trim(),bgImage:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg-image').trim(),bubbleColor:getComputedStyle(document.documentElement).getPropertyValue('--bubble-out-bg').trim(),fontSize:parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size')),fontFamily:getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim()};localStorage.setItem('decidr_theme',JSON.stringify(t));}
+        loadTheme();
+
+        function selectWallpaper(el){
+            document.querySelectorAll('#wallpaperPresets .theme-preset').forEach(p=>p.classList.remove('selected'));
+            el.classList.add('selected');
+            const v=el.dataset.wallpaper;
+            if(v.startsWith('linear-gradient')||v.startsWith('#')){
+                document.documentElement.style.setProperty('--chat-bg',v);
+                document.documentElement.style.setProperty('--chat-bg-image','none');
+            }
+            saveTheme();
+        }
+        function uploadWallpaper(e){
+            const file=e.target.files[0];if(!file)return;
+            const reader=new FileReader();reader.onload=function(ev){
+                document.documentElement.style.setProperty('--chat-bg','#f0f5f9');
+                document.documentElement.style.setProperty('--chat-bg-image',`url(${ev.target.result})`);
+                document.querySelectorAll('#wallpaperPresets .theme-preset').forEach(p=>p.classList.remove('selected'));
+                saveTheme();
+            };reader.readAsDataURL(file);
+        }
+        function selectBubbleColor(el){
+            document.querySelectorAll('[onclick="selectBubbleColor(this)"]').forEach(p=>p.classList.remove('selected'));
+            el.classList.add('selected');
+            document.documentElement.style.setProperty('--bubble-out-bg',el.dataset.color);
+            saveTheme();
+        }
+        function applyFontSize(v){document.documentElement.style.setProperty('--font-size',v+'px');document.getElementById('fontSizeLabel').textContent=v+'px';saveTheme();}
+        function applyFontFamily(v){document.documentElement.style.setProperty('--font-family',v);saveTheme();}
+
+        function switchSettingsTab(tab,el){
+            document.querySelectorAll('.settings-tab').forEach(t=>t.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById('settingsAppearance').classList.toggle('hidden',tab!=='appearance');
+            document.getElementById('settingsPrivacy').classList.toggle('hidden',tab!=='privacy');
+            if(tab==='privacy')loadBlockedUsers();
+        }
+
+        // ─── Block ───
+        async function blockUser(username){
+            if(!confirm(`Bloquear a ${username}?`))return;
+            try{const r=await fetch(`/profile/block/${username}`,{method:'POST',headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(r.ok)alert(`✅ ${username} bloqueado`);else alert(d.error);}catch(e){alert('Error');}
+        }
+        async function unblockUser(username){
+            try{const r=await fetch(`/profile/block/${username}`,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});if(r.ok){alert(`✅ ${username} desbloqueado`);loadBlockedUsers();}}catch(e){alert('Error');}
+        }
+        async function loadBlockedUsers(){
+            const el=document.getElementById('blockedUsersList');
+            try{const r=await fetch('/profile/blocked/list',{headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(d.blocked&&d.blocked.length){el.innerHTML=d.blocked.map(u=>`<div class="flex items-center justify-between py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition"><div><div class="text-sm font-medium text-gray-800">${escapeHtml(u.display_name||u.username)}</div><div class="text-xs text-gray-400">@${u.username}</div></div><button onclick="unblockUser('${u.username}')" class="text-red-500 text-xs font-semibold hover:text-red-600 hover:underline transition">Desbloquear</button></div>`).join('');}else{el.innerHTML='<p class="text-sm text-gray-400 text-center py-4">No bloqueaste a nadie</p>';}}catch(e){el.innerHTML='<p class="text-sm text-red-400 text-center py-4">Error al cargar</p>';}
+        }
+
+        // ─── Profile ───
+        function updateProfileCounts(){
+            const n=document.getElementById('profileName').value.length;
+            const b=document.getElementById('profileBio').value.length;
+            document.getElementById('nameCount').textContent=n+'/30';
+            document.getElementById('bioCount').textContent=b+'/150';
+        }
+        async function showProfileModal(){
+            document.getElementById('profileError').classList.add('hidden');
+            document.getElementById('profileName').value=myProfileData.display_name||'';
+            document.getElementById('profileBio').value=myProfileData.bio||'';
+            updateAvatarUI();
+            updateProfileCounts();
+            document.getElementById('profileModal').classList.remove('hidden');
+        }
+        function hideProfileModal(){
+            const box=document.querySelector('#profileModal .modal-box');
+            if(box){box.classList.add('closing');setTimeout(()=>{document.getElementById('profileModal').classList.add('hidden');box.classList.remove('closing');},150);}
+            else document.getElementById('profileModal').classList.add('hidden');
+        }
+        function updateAvatarUI(){
+            const initials=document.getElementById('avatarInitials'),img=document.getElementById('avatarImg');
+            if(myProfileData.avatar){initials.classList.add('hidden');img.classList.remove('hidden');img.src=myProfileData.avatar;}else{initials.classList.remove('hidden');img.classList.add('hidden');initials.textContent=(myProfileData.display_name||myUsername)[0].toUpperCase();}
+            const small=document.getElementById('myAvatarSmall');
+            if(myProfileData.avatar)small.innerHTML=`<img src="${myProfileData.avatar}" class="w-full h-full object-cover rounded-full">`;
+            else small.textContent=(myProfileData.display_name||myUsername)[0].toUpperCase();
+        }
+        async function uploadAvatar(e){
+            const file=e.target.files[0];if(!file)return;
+            const fd=new FormData();fd.append('file',file);
+            try{const r=await fetch('/profile/avatar',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});const d=await r.json();if(r.ok){myProfileData.avatar=d.avatar;updateAvatarUI();}}catch(e){document.getElementById('profileError').textContent='Error al subir';document.getElementById('profileError').classList.remove('hidden');}
+        }
+        async function saveProfile(){
+            const name=document.getElementById('profileName').value.trim(),bio=document.getElementById('profileBio').value.trim();
+            try{const r=await fetch('/profile',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({display_name:name||myUsername,bio:bio||''})});const d=await r.json();if(r.ok){myProfileData.display_name=d.display_name;myProfileData.bio=d.bio;updateAvatarUI();hideProfileModal();}else{document.getElementById('profileError').textContent=d.error;document.getElementById('profileError').classList.remove('hidden');}}catch(e){document.getElementById('profileError').textContent='Error';document.getElementById('profileError').classList.remove('hidden');}
+        }
+
+        function showSettingsModal(){
+            document.getElementById('settingsModal').classList.remove('hidden');
+            document.getElementById('fontSizeSlider').value=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size'))||14;
+            document.getElementById('fontSizeLabel').textContent=document.getElementById('fontSizeSlider').value+'px';
+            loadBlockedUsers();
+        }
+        function hideSettingsModal(){
+            const box=document.querySelector('#settingsModal .modal-box');
+            if(box){box.classList.add('closing');setTimeout(()=>{document.getElementById('settingsModal').classList.add('hidden');box.classList.remove('closing');},150);}
+            else document.getElementById('settingsModal').classList.add('hidden');
+        }
 
         // ─── Auth ───
-        function switchAuthTab(mode) {
-            authMode = mode;
-            document.getElementById('tabLogin').className = 'auth-tab flex-1 text-center pb-2 text-sm ' + (mode === 'login' ? 'active' : 'text-gray-400');
-            document.getElementById('tabRegister').className = 'auth-tab flex-1 text-center pb-2 text-sm ' + (mode === 'register' ? 'active' : 'text-gray-400');
-            document.getElementById('authBtn').textContent = mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta';
-            document.getElementById('authBtn').onclick = mode === 'login' ? doLogin : doRegister;
-            document.getElementById('authToggleText').textContent = mode === 'login' ? '¿No tenés cuenta?' : '¿Ya tenés cuenta?';
-            document.getElementById('authToggleLink').textContent = mode === 'login' ? 'Crear una' : 'Iniciar sesión';
-            document.getElementById('authToggleLink').onclick = (e) => { e.preventDefault(); switchAuthTab(mode === 'login' ? 'register' : 'login'); };
-            document.getElementById('loginError').classList.add('hidden');
-        }
+        function switchAuthTab(m){authMode=m;document.getElementById('tabLogin').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='login'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('tabRegister').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='register'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('authBtn').textContent=m==='login'?'Iniciar sesión':'Crear cuenta';document.getElementById('authBtn').onclick=m==='login'?doLogin:doRegister;document.getElementById('authToggleText').textContent=m==='login'?'¿No tenés cuenta?':'¿Ya tenés cuenta?';document.getElementById('authToggleLink').textContent=m==='login'?'Crear una':'Iniciar sesión';document.getElementById('authToggleLink').onclick=function(e){e.preventDefault();switchAuthTab(m==='login'?'register':'login');};document.getElementById('loginError').classList.add('hidden');}
+        function setError(m){const e=document.getElementById('loginError');e.textContent=m;e.classList.remove('hidden');}
+        function showSpinner(){document.getElementById('loginForm').classList.add('hidden');document.getElementById('loginSpinner').classList.remove('hidden');}
+        function hideSpinner(){document.getElementById('loginForm').classList.remove('hidden');document.getElementById('loginSpinner').classList.add('hidden');}
+        async function doLogin(){const u=document.getElementById('loginUser').value.trim(),p=document.getElementById('loginPass').value;if(!u||!p)return setError('Completá todo');setError('');showSpinner();try{const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const d=await r.json();if(r.ok)setAuth(d.token,d.username,d.user_id);else{hideSpinner();setError(d.error||'Error');}}catch(e){hideSpinner();setError('Error de conexión');}}
+        async function doRegister(){const u=document.getElementById('loginUser').value.trim(),p=document.getElementById('loginPass').value;if(!u||!p)return setError('Completá todo');if(u.length<3)return setError('Usuario: mínimo 3 caracteres');setError('');showSpinner();try{const r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const d=await r.json();if(r.ok)setAuth(d.token,d.username,d.user_id);else{hideSpinner();setError(d.error||'Error');}}catch(e){hideSpinner();setError('Error de conexión');}}
+        function showLogin(){document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('appWrapper').classList.add('hidden');}
+        function hideLogin(){document.getElementById('loginScreen').classList.add('hidden');document.getElementById('appWrapper').classList.remove('hidden');}
+        function setAuth(t,u,id){token=t;myUsername=u;myUserId=id;clientId=u;localStorage.setItem('decidr_token',t);localStorage.setItem('decidr_username',u);hideLogin();initApp();}
+        function logout(){if(ws)ws.close();token=null;myUsername='';localStorage.removeItem('decidr_token');localStorage.removeItem('decidr_username');document.getElementById('loginPass').value='';switchAuthTab('login');showLogin();hideSpinner();}
+        document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')authMode==='login'?doLogin():doRegister();});
 
-        function showLogin() { document.getElementById('loginScreen').classList.remove('hidden'); }
-        function hideLogin() { document.getElementById('loginScreen').classList.add('hidden'); }
-        function setError(msg) { const el = document.getElementById('loginError'); el.textContent = msg; el.classList.remove('hidden'); }
-        function showSpinner() { document.getElementById('loginForm').classList.add('hidden'); document.getElementById('loginSpinner').classList.remove('hidden'); }
-        function hideSpinner() { document.getElementById('loginForm').classList.remove('hidden'); document.getElementById('loginSpinner').classList.add('hidden'); }
-
-        async function doLogin() {
-            const u = document.getElementById('loginUser').value.trim();
-            const p = document.getElementById('loginPass').value;
-            if (!u || !p) { setError('Completá todos los campos'); return; }
-            document.getElementById('loginError').classList.add('hidden'); showSpinner();
-            try {
-                const r = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username: u, password: p}) });
-                const d = await r.json();
-                if (r.ok) { setAuth(d.token, d.username, d.user_id); }
-                else { hideSpinner(); setError(d.error || 'Error'); }
-            } catch(e) { hideSpinner(); setError('Error de conexión'); }
-        }
-
-        async function doRegister() {
-            const u = document.getElementById('loginUser').value.trim();
-            const p = document.getElementById('loginPass').value;
-            if (!u || !p) { setError('Completá todos los campos'); return; }
-            if (u.length < 3) { setError('Usuario: mínimo 3 caracteres'); return; }
-            document.getElementById('loginError').classList.add('hidden'); showSpinner();
-            try {
-                const r = await fetch('/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username: u, password: p}) });
-                const d = await r.json();
-                if (r.ok) { setAuth(d.token, d.username, d.user_id); }
-                else { hideSpinner(); setError(d.error || 'Error'); }
-            } catch(e) { hideSpinner(); setError('Error de conexión'); }
-        }
-
-        function setAuth(t, u, id) {
-            token = t; myUsername = u; myUserId = id; clientId = u;
-            localStorage.setItem('decidr_token', t);
-            localStorage.setItem('decidr_username', u);
-            hideLogin(); initApp();
-        }
-
-        function logout() {
-            if (ws) ws.close();
-            token = null; myUsername = '';
+        function initApp(){Crypto.init();chat=document.getElementById('chat');document.getElementById('myUsername').textContent=myUsername;connectWs();fetchRooms();fetchProfile();}
+        (async function(){
+            if(token&&myUsername){
+                try{const r=await fetch('/rooms',{headers:{'Authorization':'Bearer '+token}});if(r.ok){clientId=myUsername;hideLogin();initApp();return;}}catch(e){}
+            }
             localStorage.removeItem('decidr_token');
             localStorage.removeItem('decidr_username');
-            document.getElementById('loginPass').value = '';
-            switchAuthTab('login'); showLogin(); hideSpinner();
+            token=null;myUsername='';
+            showLogin();switchAuthTab('register');
+        })();
+
+        async function fetchProfile(){
+            try{const r=await fetch(`/profile/${myUsername}`,{headers:{'Authorization':'Bearer '+token}});if(r.status===401){invalidToken();return;}const d=await r.json();if(r.ok){myProfileData={display_name:d.display_name||myUsername,bio:d.bio||'',avatar:d.avatar};document.getElementById('myUsername').textContent=d.display_name||myUsername;updateAvatarUI();}}catch(e){}
         }
-
-        document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') authMode === 'login' ? doLogin() : doRegister(); });
-
-        // ─── App ───
-        function initApp() {
-            Crypto.init();
-            chat = document.getElementById('chat');
-            document.getElementById('myUsername').textContent = myUsername;
-            connectWs();
-            fetchRooms();
-        }
-
-        if (token && myUsername) { clientId = myUsername; hideLogin(); initApp(); }
-        else { switchAuthTab('login'); showLogin(); }
 
         // ─── Rooms ───
-        async function fetchRooms() {
-            try {
-                const r = await fetch('/rooms', { headers: { 'Authorization': 'Bearer ' + token } });
-                const d = await r.json();
-                if (d.rooms) {
-                    myRooms = d.rooms;
-                    renderRooms();
-                    // If no rooms, create default
-                    if (myRooms.length === 0) {
-                        const cr = await fetch('/rooms', { method:'POST', headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}, body: JSON.stringify({name: 'General'}) });
-                        const cd = await cr.json();
-                        if (cd.id) { myRooms = [{id: cd.id, name: cd.name, member_count: 1}]; renderRooms(); }
-                    }
-                }
-            } catch(e) { console.error('fetch rooms', e); }
+        async function fetchRooms(){
+            try{const r=await fetch('/rooms',{headers:{'Authorization':'Bearer '+token}});if(r.status===401){console.error('fetchRooms 401');invalidToken();return;}const d=await r.json();if(d.rooms){console.log('fetchRooms got',d.rooms.length,'rooms, currentRoom:',currentRoom);myRooms=d.rooms;renderRooms();if(myRooms.length===0){console.log('no rooms, creating General');const cr=await fetch('/rooms',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({name:'General'})});if(cr.status===401){invalidToken();return;}const cd=await cr.json();console.log('General created',cd);if(cd.id){myRooms=[{id:cd.id,name:cd.name,member_count:1}];renderRooms();switchRoom(cd.id,cd.name,null);}}else if(currentRoom==='default_room'){console.log('switching to first room');switchRoom(myRooms[0].id,myRooms[0].name,null);}}else console.log('fetchRooms no d.rooms');}catch(e){console.error('fetchRooms error',e);}
+        }
+        function renderRooms(){const list=document.getElementById('roomList');list.innerHTML='';myRooms.forEach(r=>{const div=document.createElement('div');div.className='room-item p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3 transition'+(r.id.toString()===currentRoom?' room-active':'');div.dataset.room=r.id;if(r.is_dm){div.innerHTML=`<div class="w-11 h-11 bg-gradient-to-br from-[#7ab8d4] to-[#9acce4] rounded-xl flex items-center justify-center text-white text-lg shrink-0 shadow-sm">👤</div><div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate text-gray-800">${escapeHtml(r.name)}</div><div class="text-xs text-gray-400">DM · 🔒</div></div>`;}else{const initial=(r.name||'G')[0].toUpperCase();div.innerHTML=`<div class="w-11 h-11 bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] rounded-xl flex items-center justify-center text-white font-bold shrink-0 shadow-sm">${initial}</div><div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate text-gray-800">${escapeHtml(r.name)}</div><div class="text-xs text-gray-400">${r.member_count||1} miembros · 🔒</div></div>`;}div.onclick=()=>switchRoom(r.id,r.name,div);list.appendChild(div);});}
+        function showCreateRoomModal(){document.getElementById('createRoomModal').classList.remove('hidden');document.getElementById('roomError').classList.add('hidden');}
+        function hideCreateRoomModal(){document.getElementById('createRoomModal').classList.add('hidden');}
+        async function createRoom(){const name=document.getElementById('newRoomName').value.trim();if(!name){document.getElementById('roomError').textContent='Escribí un nombre';document.getElementById('roomError').classList.remove('hidden');return;}try{const r=await fetch('/rooms',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({name})});const d=await r.json();if(r.ok){document.getElementById('newRoomName').value='';hideCreateRoomModal();await fetchRooms();switchRoom(d.id,d.name,null);}else{document.getElementById('roomError').textContent=d.error;document.getElementById('roomError').classList.remove('hidden');}}catch(e){document.getElementById('roomError').textContent='Error';document.getElementById('roomError').classList.remove('hidden');}}
+        function switchRoom(id,name,el){console.log('switchRoom called',id,name);currentRoom=id.toString();currentRoomName=name||'General';document.querySelectorAll('.room-item').forEach(r=>r.classList.remove('room-active'));if(el)el.classList.add('room-active');else{document.querySelectorAll('.room-item').forEach(r=>{if(r.dataset.room===currentRoom)r.classList.add('room-active');});}document.getElementById('roomTitle').textContent=currentRoomName;chat.innerHTML=`<div class="system-msg italic">🔒 ${currentRoomName}</div>`;hasRoomKey=false;roomKeyRequested=false;const existing=Crypto.getRoomKey(currentRoom);if(existing)hasRoomKey=true;requestRoomKey();if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'set_room',room:currentRoom}));}
+        let searchTimeout=null;
+        async function searchUsers(q){
+            const el=document.getElementById('contactResults');
+            if(!q||q.length<1){el.classList.add('hidden');el.innerHTML='';return;}
+            clearTimeout(searchTimeout);
+            searchTimeout=setTimeout(async ()=>{
+                try{const r=await fetch('/users/search?q='+encodeURIComponent(q),{headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(d.users&&d.users.length){el.innerHTML=d.users.map(u=>`<div class="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer transition" onclick="startDM('${u.username}')"><div><div class="text-sm font-medium text-gray-800">${escapeHtml(u.display_name||u.username)}</div><div class="text-[10px] text-gray-400">@${u.username}</div></div><button class="text-xs bg-[#5a9fbc] text-white px-3 py-1 rounded-lg hover:bg-[#4a87a0] transition">Agregar</button></div>`).join('');el.classList.remove('hidden');}else{el.innerHTML='<div class="px-3 py-3 text-xs text-gray-400 text-center">Sin resultados</div>';el.classList.remove('hidden');}}catch(e){el.classList.add('hidden');}
+            },300);
+        }
+        async function startDM(username){
+            try{const r=await fetch('/rooms/dm/'+username,{method:'POST',headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(r.ok){document.getElementById('contactResults').classList.add('hidden');document.getElementById('contactSearch').value='';await fetchRooms();switchRoom(d.id,d.name,null);}}catch(e){}
         }
 
-        function renderRooms() {
-            const list = document.getElementById('roomList');
-            list.innerHTML = '';
-            myRooms.forEach(r => {
-                const div = document.createElement('div');
-                div.className = 'room-item p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3' + (r.id.toString() === currentRoom ? ' room-active' : '');
-                div.dataset.room = r.id;
-                const initial = (r.name || 'G')[0].toUpperCase();
-                div.innerHTML = `
-                    <div class="w-11 h-11 bg-[#5a9fbc] rounded-full flex items-center justify-center text-white font-bold shrink-0">${initial}</div>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-semibold text-sm truncate">${escapeHtml(r.name)}</div>
-                        <div class="text-xs text-gray-500">${r.member_count || 1} miembros · 🔒</div>
-                    </div>
-                `;
-                div.onclick = () => switchRoom(r.id, r.name, div);
-                list.appendChild(div);
-            });
+        // ─── WS ───
+        function invalidToken(){
+            localStorage.removeItem('decidr_token');
+            localStorage.removeItem('decidr_username');
+            token=null;
+            myUsername='';
+            showLogin();
+            switchAuthTab('register');
         }
-
-        function showCreateRoomModal() { document.getElementById('createRoomModal').classList.remove('hidden'); document.getElementById('roomError').classList.add('hidden'); }
-        function hideCreateRoomModal() { document.getElementById('createRoomModal').classList.add('hidden'); }
-
-        async function createRoom() {
-            const name = document.getElementById('newRoomName').value.trim();
-            if (!name) { document.getElementById('roomError').textContent = 'Escribí un nombre'; document.getElementById('roomError').classList.remove('hidden'); return; }
-            try {
-                const r = await fetch('/rooms', { method:'POST', headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}, body: JSON.stringify({name}) });
-                const d = await r.json();
-                if (r.ok) {
-                    document.getElementById('newRoomName').value = '';
-                    hideCreateRoomModal();
-                    await fetchRooms();
-                    switchRoom(d.id, d.name, null);
-                } else {
-                    document.getElementById('roomError').textContent = d.error || 'Error';
-                    document.getElementById('roomError').classList.remove('hidden');
-                }
-            } catch(e) { document.getElementById('roomError').textContent = 'Error de conexión'; document.getElementById('roomError').classList.remove('hidden'); }
-        }
-
-        function switchRoom(roomId, roomName, el) {
-            currentRoom = roomId.toString();
-            currentRoomName = roomName || 'General';
-            document.querySelectorAll('.room-item').forEach(r => r.classList.remove('room-active'));
-            if (el) el.classList.add('room-active');
-            else {
-                document.querySelectorAll('.room-item').forEach(r => { if (r.dataset.room === currentRoom) r.classList.add('room-active'); });
-            }
-            document.getElementById('roomTitle').textContent = currentRoomName;
-            chat.innerHTML = `<div class="system-msg italic">🔒 Cambiaste a ${currentRoomName}</div>`;
-            hasRoomKey = false; roomKeyRequested = false;
-            const existing = Crypto.getRoomKey(currentRoom);
-            if (existing) hasRoomKey = true;
-            requestRoomKey();
-            // Notify server
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'set_room', room: currentRoom }));
-            }
-        }
-
-        // ─── WebSocket ───
-        function connectWs() {
-            const p = location.protocol === "https:" ? "wss:" : "ws:";
-            ws = new WebSocket(`${p}//${location.host}/ws/${clientId}?token=${token}`);
-            ws.onopen = () => {
-                ws.send(JSON.stringify({ type: "public_key", key: Crypto.getPublicKey() }));
-                ws.send(JSON.stringify({ type: "set_room", room: currentRoom }));
-                ws.send(JSON.stringify({ type: "get_users" }));
+        function connectWs(){
+            const p=location.protocol==="https:"?"wss:":"ws:";
+            ws=new WebSocket(`${p}//${location.host}/ws/${clientId}?token=${token}`);
+            ws.onopen=()=>{
+                ws.send(JSON.stringify({type:"public_key",key:Crypto.getPublicKey()}));
+                ws.send(JSON.stringify({type:"set_room",room:currentRoom}));
+                ws.send(JSON.stringify({type:"get_users"}));
+                while(pendingMessages.length){const m=pendingMessages.shift();try{ws.send(JSON.stringify(m));}catch(e){}}
             };
-            ws.onmessage = (e) => { handleMessage(JSON.parse(e.data)); };
-            ws.onclose = () => { setTimeout(connectWs, 3000); };
+            ws.onmessage=e=>handleMessage(JSON.parse(e.data));
+            ws.onclose=e=>{
+                if(e.code===4001){invalidToken();return;}
+                setTimeout(connectWs,500);
+            };
         }
+        async function handleMessage(d){if(d.type==="user_list"){connectedUsers=d.users;updatePeerKeys();updateOnlineUsers();requestRoomKey();}else if(d.type==="incoming_call")showIncomingCall(d);else if(d.type==="call_ringing")document.getElementById('callStatus').textContent='Llamando...';else if(d.type==="call_accepted")startWebRTC();else if(d.type==="call_rejected"){alert('Rechazada');resetCallUI();}else if(d.type==="call_ended"){alert('Finalizada');cleanupCall();}else if(d.type==="call_error"){alert(d.content);resetCallUI();}else if(d.type==="offer")handleOffer(d);else if(d.type==="answer")handleAnswer(d);else if(d.type==="ice_candidate")handleIceCandidate(d);else if(d.type==="room_key_share")handleRoomKeyShare(d);else if(d.type==="new_dm"){await fetchRooms();switchRoom(d.room_id,d.from,null);}else appendMessage(d);}
 
-        function handleMessage(data) {
-            if (data.type === "user_list") {
-                connectedUsers = data.users;
-                updatePeerKeys();
-                updateOnlineUsers();
-                requestRoomKey();
-            } else if (data.type === "incoming_call") { showIncomingCall(data); }
-            else if (data.type === "call_ringing") { document.getElementById('callStatus').textContent = 'Llamando...'; }
-            else if (data.type === "call_accepted") { startWebRTC(); }
-            else if (data.type === "call_rejected") { alert('Rechazada'); resetCallUI(); }
-            else if (data.type === "call_ended") { alert('Finalizada'); cleanupCall(); }
-            else if (data.type === "call_error") { alert(data.content); resetCallUI(); }
-            else if (data.type === "offer") { handleOffer(data); }
-            else if (data.type === "answer") { handleAnswer(data); }
-            else if (data.type === "ice_candidate") { handleIceCandidate(data); }
-            else if (data.type === "room_key_share") { handleRoomKeyShare(data); }
-            else { appendMessage(data); }
-        }
+        function updatePeerKeys(){console.log('updatePeerKeys: connectedUsers',connectedUsers.length);connectedUsers.forEach(u=>{if(u.key&&u.id!==clientId){try{Crypto.peerKeys[u.id]=nacl.util.decodeBase64(u.key);console.log('updatePeerKeys: added',u.id);}catch(e){console.log('updatePeerKeys: failed for',u.id,e);}}});}
+        function requestRoomKey(){console.log('requestRoomKey: hasRoomKey',hasRoomKey,'roomKeyRequested',roomKeyRequested,'hasLocalKey',!!Crypto.getRoomKey(currentRoom));if(hasRoomKey||roomKeyRequested)return;if(Crypto.getRoomKey(currentRoom)){hasRoomKey=true;return;}roomKeyRequested=true;setTimeout(()=>{console.log('requestRoomKey timer fired: hasRoomKey now',hasRoomKey);if(!hasRoomKey){const key=Crypto.generateRoomKey();Crypto.setRoomKey(currentRoom,key);hasRoomKey=true;console.log('requestRoomKey: generated local key');shareRoomKeyWithPeers();}roomKeyRequested=false;},2000);}
+        function shareRoomKeyWithPeers(){const key=Crypto.getRoomKey(currentRoom);console.log('shareRoomKeyWithPeers: roomKey?',!!key,'peers:',Object.keys(Crypto.peerKeys).length);if(!key)return;Object.entries(Crypto.peerKeys).forEach(([pid,pk])=>{try{const enc=Crypto.encryptRoomKeyFor(key,pk);console.log('sharing key with peer:',pid);ws.send(JSON.stringify({type:"room_key_share",target:pid,room:currentRoom,encrypted_key:enc.encrypted,nonce:enc.nonce,sender_key:Crypto.getPublicKey()}));}catch(e){console.error('shareRoomKeyWithPeers error for',pid,e);}});}
+        function handleRoomKeyShare(d){console.log('handleRoomKeyShare: from',d.from,'room',d.room,'currentRoom',currentRoom);const dec=Crypto.decryptRoomKey(d.encrypted_key,d.nonce,d.sender_key);console.log('handleRoomKeyShare: decryption',dec?'success':'FAILED');if(!dec)return;const existing=Crypto.getRoomKey(currentRoom);console.log('handleRoomKeyShare: existing key?',!!existing);if(existing){const cur=nacl.util.encodeBase64(existing);const newB=nacl.util.encodeBase64(dec);console.log('compare keys: cur',cur.slice(0,8)+'...','new',newB.slice(0,8)+'...','keep existing?',newB>=cur);if(newB>=cur)return;}Crypto.setRoomKey(currentRoom,dec);console.log('handleRoomKeyShare: key stored, hasRoomKey was',hasRoomKey);if(!hasRoomKey){hasRoomKey=true;appendMessage({type:"system",content:"🔑 Clave E2EE recibida"});shareRoomKeyWithPeers();}}
 
-        // ─── E2EE ───
-        function updatePeerKeys() {
-            connectedUsers.forEach(u => { if (u.key && u.id !== clientId) { try { Crypto.peerKeys[u.id] = nacl.util.decodeBase64(u.key); } catch(e) {} } });
-        }
-
-        function requestRoomKey() {
-            if (hasRoomKey || roomKeyRequested) return;
-            if (Crypto.getRoomKey(currentRoom)) { hasRoomKey = true; return; }
-            roomKeyRequested = true;
-            setTimeout(() => {
-                if (!hasRoomKey) {
-                    const key = Crypto.generateRoomKey();
-                    Crypto.setRoomKey(currentRoom, key);
-                    hasRoomKey = true; roomKeyRequested = false;
-                    shareRoomKeyWithPeers();
-                }
-                roomKeyRequested = false;
-            }, 2000);
-        }
-
-        function shareRoomKeyWithPeers() {
-            const key = Crypto.getRoomKey(currentRoom);
-            if (!key) return;
-            Object.entries(Crypto.peerKeys).forEach(([pid, pk]) => {
-                const enc = Crypto.encryptRoomKeyFor(key, pid);
-                ws.send(JSON.stringify({ type: "room_key_share", target: pid, room: currentRoom, encrypted_key: enc.encrypted, nonce: enc.nonce, sender_key: Crypto.getPublicKey() }));
-            });
-        }
-
-        function handleRoomKeyShare(data) {
-            if (hasRoomKey) return;
-            const dec = Crypto.decryptRoomKey(data.encrypted_key, data.nonce, data.sender_key);
-            if (dec) {
-                Crypto.setRoomKey(currentRoom, dec);
-                hasRoomKey = true;
-                appendMessage({ type: "system", content: "🔑 Clave de cifrado recibida" });
-            }
-        }
-
-        // ─── UI ───
-        function updateOnlineUsers() {
-            const c = document.getElementById('onlineUsers');
-            if (!c) return; c.innerHTML = '';
-            connectedUsers.forEach(u => {
-                if (u.id === clientId) return;
-                const div = document.createElement('div');
-                div.className = 'flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 text-xs';
-                div.innerHTML = `
-                    <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
-                    <span class="flex-1 truncate">${escapeHtml(u.name)}</span>
-                    <div class="flex gap-0.5">
-                        <button onclick="startCall('${u.id}','${escapeHtml(u.name)}',false)" class="w-6 h-6 rounded-full bg-gray-100 hover:bg-green-100 flex items-center justify-center text-[10px]" title="Voz">📞</button>
-                        <button onclick="startCall('${u.id}','${escapeHtml(u.name)}',true)" class="w-6 h-6 rounded-full bg-gray-100 hover:bg-red-100 flex items-center justify-center text-[10px]" title="Video">📹</button>
-                    </div>
-                `;
+        function updateOnlineUsers(){
+            const c=document.getElementById('onlineUsers');if(!c)return;c.innerHTML='';
+            connectedUsers.forEach(u=>{
+                if(u.id===clientId)return;
+                const div=document.createElement('div');div.className='flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 text-xs transition';
+                div.innerHTML=`<span class="w-2 h-2 rounded-full bg-green-500 shrink-0 ring-2 ring-green-200"></span><span class="flex-1 truncate font-medium text-gray-700">${escapeHtml(u.name)}</span><div class="flex gap-0.5"><button onclick="startCall('${u.id}','${escapeHtml(u.name)}',false)" class="w-6 h-6 rounded-lg bg-gray-100 hover:bg-green-100 hover:text-green-600 flex items-center justify-center text-[10px] transition" title="Voz">📞</button><button onclick="startCall('${u.id}','${escapeHtml(u.name)}',true)" class="w-6 h-6 rounded-lg bg-gray-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center text-[10px] transition" title="Video">📹</button><button onclick="blockUser('${u.id}')" class="w-6 h-6 rounded-lg bg-gray-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center text-[10px] transition" title="Bloquear">🚫</button></div>`;
                 c.appendChild(div);
             });
-            if (hasRoomKey && Object.keys(Crypto.peerKeys).length > 0) shareRoomKeyWithPeers();
+            if(hasRoomKey&&Object.keys(Crypto.peerKeys).length>0)shareRoomKeyWithPeers();
         }
+        function refreshOnlineUsers(){if(ws)ws.send(JSON.stringify({type:"get_users"}));}
 
-        function appendMessage(data) {
-            // Filter messages by room
-            if (data.room && data.room !== currentRoom) return;
-            const div = document.createElement('div');
-            if (data.type === "chat") {
-                const isMe = data.client_id === clientId;
-                let display = data.content, encrypted = false;
-                if (data.nonce) {
-                    const dec = Crypto.decryptMessage(currentRoom, data.content, data.nonce);
-                    if (dec !== null) { display = dec; encrypted = true; }
-                    else { display = "🔒 Mensaje cifrado"; }
-                }
-                div.className = `bubble ${isMe ? 'bubble-out' : 'bubble-in'} ${encrypted ? 'bubble-encrypted' : ''}`;
-                if (!isMe) div.innerHTML = `<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${data.sender}</span>${escapeHtml(display)}`;
-                else div.innerText = display;
-            } else if (data.type === "scheduled") {
-                div.className = "bubble bubble-scheduled";
-                let display = data.content;
-                if (data.nonce) { const dec = Crypto.decryptMessage(currentRoom, data.content, data.nonce); if (dec !== null) display = dec; else display = "🔒 Mensaje cifrado"; }
-                const isMine = data.sender === myUsername;
-                div.innerHTML = `<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${isMine ? 'Programaste' : 'De ' + data.sender}</div>${escapeHtml(display)}`;
-            } else if (data.type === "system") {
-                div.className = "system-msg"; div.innerText = data.content;
-                if (data.content.includes("Pozo")) document.getElementById('papelitoInput').classList.remove('hidden');
-            } else if (data.type === "game_result") {
-                div.className = "game-result"; div.innerHTML = data.content.replace(/\n/g, '<br>');
-                if (data.content.includes("✊✋✌️") || data.content.includes("empate") || data.content.includes("gana")) { document.getElementById('pptInput').classList.add('hidden'); pptChosen = false; }
-            }
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
+        function appendMessage(d){
+            if(d.room&&d.room!==currentRoom)return;
+            const div=document.createElement('div');
+            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;if(!isMe)div.innerHTML=`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>${escapeHtml(display)}`;else div.innerText=display;}
+            else if(d.type==="scheduled"){div.className="bubble bubble-scheduled";let display=d.content;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);if(dec!==null)display=dec;else display="🔒 Mensaje cifrado";}div.innerHTML=`<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${d.sender}</div>${escapeHtml(display)}`;}
+            else if(d.type==="system"){div.className="system-msg";div.innerText=d.content;if(d.content.includes("Pozo"))document.getElementById('papelitoInput').classList.remove('hidden');}
+            else if(d.type==="game_result"){div.className="game-result";div.innerHTML=d.content.replace(/\n/g,'<br>');if(d.content.includes("✊✋✌️")||d.content.includes("empate")||d.content.includes("gana")){document.getElementById('pptInput').classList.add('hidden');pptChosen=false;}}
+            chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
         }
+        function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 
-        function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
-
-        // ─── Text ───
-        function sendText() {
-            const val = document.getElementById('input').value;
-            if (!val.trim()) return;
-            const enc = Crypto.encryptMessage(currentRoom, val);
-            const p = { type: "text", room: currentRoom };
-            if (enc) { p.content = enc.ciphertext; p.nonce = enc.nonce; }
-            else { p.content = val; }
-            ws.send(JSON.stringify(p));
-            document.getElementById('input').value = "";
+        const pendingMessages=[];
+        function sendText(){
+            const val=document.getElementById('input').value;if(!val.trim())return;
+            try{const enc=Crypto.encryptMessage(currentRoom,val);const p={type:"text",room:currentRoom};if(enc){p.content=enc.ciphertext;p.nonce=enc.nonce;}else p.content=val;
+            if(!ws||ws.readyState!==WebSocket.OPEN){console.log('WS not open, queuing');pendingMessages.push(p);connectWs();}else{ws.send(JSON.stringify(p));}
+            console.log('sendText room:',currentRoom,'content:',val);
+            appendMessage({type:"chat",client_id:clientId,sender:"",content:val});
+            }catch(e){}document.getElementById('input').value="";
         }
-        document.getElementById('input').addEventListener("keypress", e => { if (e.key === "Enter") sendText(); });
+        document.getElementById('input').addEventListener("keypress",e=>{if(e.key==="Enter")sendText();});
 
         // ─── Schedule ───
-        function toggleScheduleModal() {
-            const m = document.getElementById('scheduleModal');
-            m.classList.toggle('hidden');
-            document.body.classList.toggle('modal-open', !m.classList.contains('hidden'));
-            if (!m.classList.contains('hidden')) {
-                const sel = document.getElementById('scheduleTarget');
-                sel.innerHTML = '<option value="">Todos</option>';
-                connectedUsers.forEach(u => { if (u.name !== myUsername) { sel.innerHTML += `<option value="${u.name}">${u.name}</option>`; } });
-                const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-                document.getElementById('scheduleDatetime').min = now.toISOString().slice(0, 16);
-            }
-        }
-
-        function doSchedule() {
-            const content = document.getElementById('scheduleContent').value.trim();
-            const target = document.getElementById('scheduleTarget').value;
-            const dt = document.getElementById('scheduleDatetime').value;
-            if (!content || !dt) { alert("Completá todos los campos"); return; }
-            const enc = Crypto.encryptMessage(currentRoom, content);
-            const p = { type: "schedule", content: enc ? enc.ciphertext : content, datetime: (new Date(dt)).toISOString(), target: target || null, room: currentRoom };
-            if (enc) p.nonce = enc.nonce;
-            ws.send(JSON.stringify(p));
-            document.getElementById('scheduleContent').value = "";
-            document.getElementById('scheduleDatetime').value = "";
-            toggleScheduleModal();
-        }
+        function toggleScheduleModal(){const m=document.getElementById('scheduleModal');m.classList.toggle('hidden');if(!m.classList.contains('hidden')){const s=document.getElementById('scheduleTarget');s.innerHTML='<option value="">Todos</option>';connectedUsers.forEach(u=>{if(u.name!==myUsername)s.innerHTML+=`<option value="${u.name}">${u.name}</option>`;});const n=new Date();n.setMinutes(n.getMinutes()-n.getTimezoneOffset());document.getElementById('scheduleDatetime').min=n.toISOString().slice(0,16);}}
+        function doSchedule(){const c=document.getElementById('scheduleContent').value.trim(),t=document.getElementById('scheduleTarget').value,dt=document.getElementById('scheduleDatetime').value;if(!c||!dt)return alert('Completá todo');try{const enc=Crypto.encryptMessage(currentRoom,c);const p={type:"schedule",content:enc?enc.ciphertext:c,datetime:(new Date(dt)).toISOString(),target:t||null,room:currentRoom};if(enc)p.nonce=enc.nonce;if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(p));}catch(e){}document.getElementById('scheduleContent').value="";document.getElementById('scheduleDatetime').value="";toggleScheduleModal();}
 
         // ─── Emojis ───
-        const EMOJIS = ["😀","😂","🤣","😊","😎","🥰","😍","🤩","😜","🙄","🤔","😴","🥱","😷","🤯","🥺","😢","😭","😤","😡","🤬","👍","👎","👌","✌️","🤞","🤟","🤙","👋","👏","🙌","🤝","✊","🤛","🤜","💪","🤲","🙏","💅","🚀","❤️","💔","💖","💯","🔥","✨","🎉","🎊","🎈","💀","👻","🎃","🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐸","🐷","🐮","🦁","🐔","🐧","🐦","🐺","🐴","🦄","🐝","🦋","🐌","🐞","🐢","🐍","🦎","🐙","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🌸","🌺","🌻","🌹","🌷","🌵","🌲","🌳","🌴","☀️","⭐","🌈","☁️","⚡","🔥","💧","🌊","❄️","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🍒","🍑","🥭","🍍","🥥","🍅","🍆","🥑","🥦","🥬","🥕","🌽","🥔","🍞","🧀","🥚","🍳","🥓","🍗","🍖","🌭","🍔","🍟","🍕","🥪","🌮","🌯","🥗","🍝","🍜","🍲","🍛","🍣","🍱","🥟","🍤","🍙","🍚","🍘","🍢","🍡","🍧","🍨","🍦","🥧","🧁","🍰","🎂","🍫","🍬","🍭","🍮","🍿","🥤","🧃","🧋","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🏀","⚽","🎾","🏈","⚾","🥎","🎱","🏓","🏸","🥊","🥋","🎿","🏂","🏆","🥇","🥈","🥉","🎯","🎮","🎲","🎭","🎨","🎤","🎧","🎵","🎶","🎹","🎺","🥁","🎷","🎻","📱","💻","⌚","📷","🎥","📺","🔔","⏰","📌","📍","✂️","🔑","🔒","🔓","💡","🔦","🔧","🔨","🧪","🔬","🔭","📡","💉","💊","🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","✈️","🚀","🛸","🚁","⛵","🚤","🚂","🚃","🏠","🏡","🏢","🏣","🏥","🏦","🏨","🏩","🏪","🏫","🏬","🏭","🏯","🏰","🗼","🗽","⛪️","🕌","🕋","⛩️","🕍","🎠","🎡","🎢"];
-        function buildEmojiPicker() {
-            const p = document.getElementById('emojiPicker');
-            EMOJIS.forEach(e => {
-                const b = document.createElement('button'); b.textContent = e;
-                b.onclick = (ev) => { ev.stopPropagation(); const inp = document.getElementById('input'); const s = inp.selectionStart || 0; inp.value = inp.value.slice(0, s) + e + inp.value.slice(inp.selectionEnd || 0); inp.focus(); inp.selectionStart = inp.selectionEnd = s + e.length; closeEmojiPicker(); };
-                p.appendChild(b);
-            });
-        }
-        buildEmojiPicker();
-        function toggleEmojiPicker() { document.getElementById('emojiPicker').classList.toggle('hidden'); }
-        function closeEmojiPicker() { document.getElementById('emojiPicker').classList.add('hidden'); }
-        document.addEventListener('click', e => { const p = document.getElementById('emojiPicker'); const b = document.getElementById('emojiBtn'); if (!p.classList.contains('hidden') && !p.contains(e.target) && !b?.contains(e.target)) p.classList.add('hidden'); });
+        const EMOJIS=["😀","😂","🤣","😊","😎","🥰","😍","🤩","😜","🙄","🤔","😴","🥱","😷","🤯","🥺","😢","😭","😤","😡","🤬","👍","👎","👌","✌️","🤞","🤟","🤙","👋","👏","🙌","🤝","✊","🤛","🤜","💪","🤲","🙏","💅","🚀","❤️","💔","💖","💯","🔥","✨","🎉","🎊","🎈","💀","👻","🎃","🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐸","🐷","🐮","🦁","🐔","🐧","🐦","🐺","🐴","🦄","🐝","🦋","🐌","🐞","🐢","🐍","🦎","🐙","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🌸","🌺","🌻","🌹","🌷","🌵","🌲","🌳","🌴","☀️","⭐","🌈","☁️","⚡","🔥","💧","🌊","❄️","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🍒","🍑","🥭","🍍","🥥","🍅","🍆","🥑","🥦","🥬","🥕","🌽","🥔","🍞","🧀","🥚","🍳","🥓","🍗","🍖","🌭","🍔","🍟","🍕","🥪","🌮","🌯","🥗","🍝","🍜","🍲","🍛","🍣","🍱","🥟","🍤","🍙","🍚","🍘","🍢","🍡","🍧","🍨","🍦","🥧","🧁","🍰","🎂","🍫","🍬","🍭","🍮","🍿","🥤","🧃","🧋","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🏀","⚽","🎾","🏈","⚾","🥎","🎱","🏓","🏸","🥊","🥋","🎿","🏂","🏆","🥇","🥈","🥉","🎯","🎮","🎲","🎭","🎨","🎤","🎧","🎵","🎶","🎹","🎺","🥁","🎷","🎻","📱","💻","⌚","📷","🎥","📺","🔔","⏰","📌","📍","✂️","🔑","🔒","🔓","💡","🔦","🔧","🔨","🧪","🔬","🔭","📡","💉","💊","🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","✈️","🚀","🛸","🚁","⛵","🚤","🚂","🚃","🏠","🏡","🏢","🏣","🏥","🏦","🏨","🏩","🏪","🏫","🏬","🏭","🏯","🏰","🗼","🗽","⛪️","🕌","🕋","⛩️","🕍","🎠","🎡","🎢"];
+        function buildEmojiPicker(){const p=document.getElementById('emojiPicker');EMOJIS.forEach(e=>{const b=document.createElement('button');b.textContent=e;b.onclick=ev=>{ev.stopPropagation();const i=document.getElementById('input');const s=i.selectionStart||0;i.value=i.value.slice(0,s)+e+i.value.slice(i.selectionEnd||0);i.focus();i.selectionStart=i.selectionEnd=s+e.length;closeEmojiPicker();};p.appendChild(b);});}buildEmojiPicker();
+        function toggleEmojiPicker(){document.getElementById('emojiPicker').classList.toggle('hidden');}function closeEmojiPicker(){document.getElementById('emojiPicker').classList.add('hidden');}
+        document.addEventListener('click',e=>{const p=document.getElementById('emojiPicker'),b=document.getElementById('emojiBtn');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!b?.contains(e.target))p.classList.add('hidden');});
 
         // ─── Games ───
-        function toggleMenu() { document.getElementById('gameMenu').classList.toggle('hidden'); document.getElementById('callPicker').classList.add('hidden'); }
-
-        let callPickingVideo = false;
-        function toggleCallPicker(video) {
-            const picker = document.getElementById('callPicker');
-            const isOpen = !picker.classList.contains('hidden') && callPickingVideo === video;
-            document.getElementById('callPicker').classList.add('hidden');
-            document.getElementById('gameMenu').classList.add('hidden');
-            if (isOpen) return;
-            callPickingVideo = video;
-            picker.innerHTML = '';
-            const online = connectedUsers.filter(u => u.id !== clientId);
-            if (online.length === 0) {
-                picker.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400 text-center">Nadie en línea</div>';
-            } else {
-                online.forEach(u => {
-                    const btn = document.createElement('button');
-                    btn.className = 'w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex items-center gap-2';
-                    btn.innerHTML = `<span>${escapeHtml(u.name)}</span>`;
-                    btn.onclick = () => {
-                        picker.classList.add('hidden');
-                        startCall(u.id, u.name, video);
-                    };
-                    picker.appendChild(btn);
-                });
-            }
-            picker.classList.remove('hidden');
-        }
-        function sendAction(game) { ws.send(JSON.stringify({type:"game_action",game,room:currentRoom})); toggleMenu(); if(game==='papelitos') startPapelitos(); if(game==='palito') showPalitoResultBtn(); if(game==='ppt') startPPT(); if(game==='palabras') { document.getElementById('palabrasInput').classList.remove('hidden'); document.getElementById('reassignRow').classList.add('hidden'); } }
-        function showPalitoResultBtn() { const d = document.createElement('div'); d.className = "system-msg"; d.innerHTML = '<button onclick="revealPalito()" class="bg-amber-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-amber-600 shadow">🏆 Revelar</button>'; chat.appendChild(d); chat.scrollTop = chat.scrollHeight; }
-        function revealPalito() { ws.send(JSON.stringify({type:"game_action",game:"palito_result",room:currentRoom})); }
-        function startPapelitos() { ws.send(JSON.stringify({type:"game_action",game:"papelitos",action:"start",room:currentRoom})); toggleMenu(); document.getElementById('papelitoInput').classList.remove('hidden'); }
-        function addPaper() { const v = document.getElementById('paperText').value; if(!v.trim()) return; ws.send(JSON.stringify({type:"game_action",game:"papelitos",action:"add",option:v,room:currentRoom})); document.getElementById('paperText').value=""; }
-        function drawPaper() { ws.send(JSON.stringify({type:"game_action",game:"papelitos",action:"draw",room:currentRoom})); }
-        function startPPT() { toggleMenu(); document.getElementById('pptInput').classList.remove('hidden'); pptChosen = false; }
-        function pptChoose(o) { if(pptChosen) return; pptChosen = true; ws.send(JSON.stringify({type:"game_action",game:"ppt",option:o,room:currentRoom})); document.querySelectorAll('.ppt-btn').forEach(b=>b.classList.remove('selected')); document.querySelector(`.ppt-btn[onclick*="${o}"]`)?.classList.add('selected'); }
-        function startReassign() { document.getElementById('reassignRow').classList.toggle('hidden'); }
-        function doReassign() { const t = document.getElementById('reassignTarget').value.trim(); if(!t) return; ws.send(JSON.stringify({type:"game_action",game:"palabras",action:"reassign",target:t,room:currentRoom})); document.getElementById('reassignTarget').value=""; document.getElementById('reassignRow').classList.add('hidden'); }
+        function toggleMenu(){document.getElementById('gameMenu').classList.toggle('hidden');document.getElementById('callPicker').classList.add('hidden');}
+        let callPickingVideo=false;
+        function toggleCallPicker(video){const picker=document.getElementById('callPicker');const isOpen=!picker.classList.contains('hidden')&&callPickingVideo===video;document.getElementById('callPicker').classList.add('hidden');document.getElementById('gameMenu').classList.add('hidden');if(isOpen)return;callPickingVideo=video;picker.innerHTML='';const online=connectedUsers.filter(u=>u.id!==clientId);if(online.length===0)picker.innerHTML='<div class="px-4 py-3 text-sm text-gray-400 text-center">Nadie en línea</div>';else online.forEach(u=>{const btn=document.createElement('button');btn.className='w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex items-center gap-2';btn.innerHTML=`<span>${escapeHtml(u.name)}</span>`;btn.onclick=()=>{picker.classList.add('hidden');startCall(u.id,u.name,video);};picker.appendChild(btn);});picker.classList.remove('hidden');}
+        function sendAction(g){ws.send(JSON.stringify({type:"game_action",game:g,room:currentRoom}));toggleMenu();if(g==='papelitos')startPapelitos();if(g==='palito')showPalitoResultBtn();if(g==='ppt')startPPT();if(g==='palabras'){document.getElementById('palabrasInput').classList.remove('hidden');document.getElementById('reassignRow').classList.add('hidden');}}
+        function showPalitoResultBtn(){const d=document.createElement('div');d.className="system-msg";d.innerHTML='<button onclick="revealPalito()" class="bg-amber-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-amber-600 shadow">🏆 Revelar</button>';chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
+        function revealPalito(){ws.send(JSON.stringify({type:"game_action",game:"palito_result",room:currentRoom}));}
+        function startPapelitos(){ws.send(JSON.stringify({type:"game_action",game:"papelitos",action:"start",room:currentRoom}));toggleMenu();document.getElementById('papelitoInput').classList.remove('hidden');}
+        function addPaper(){const v=document.getElementById('paperText').value;if(!v.trim())return;ws.send(JSON.stringify({type:"game_action",game:"papelitos",action:"add",option:v,room:currentRoom}));document.getElementById('paperText').value="";}
+        function drawPaper(){ws.send(JSON.stringify({type:"game_action",game:"papelitos",action:"draw",room:currentRoom}));}
+        function startPPT(){toggleMenu();document.getElementById('pptInput').classList.remove('hidden');pptChosen=false;}
+        function pptChoose(o){if(pptChosen)return;pptChosen=true;ws.send(JSON.stringify({type:"game_action",game:"ppt",option:o,room:currentRoom}));document.querySelectorAll('.ppt-btn').forEach(b=>b.classList.remove('selected'));document.querySelector(`.ppt-btn[onclick*="${o}"]`)?.classList.add('selected');}
+        function startReassign(){document.getElementById('reassignRow').classList.toggle('hidden');}
+        function doReassign(){const t=document.getElementById('reassignTarget').value.trim();if(!t)return;ws.send(JSON.stringify({type:"game_action",game:"palabras",action:"reassign",target:t,room:currentRoom}));document.getElementById('reassignTarget').value="";document.getElementById('reassignRow').classList.add('hidden');}
 
         // ─── Sidebar ───
-        function toggleSidebar() { const sb = document.getElementById('sidebar'); const ov = document.getElementById('sidebarOverlay'); const o = sb.classList.toggle('open'); ov.classList.toggle('hidden', !o); }
-        document.addEventListener('keydown', e => { if(e.key==='Escape') { const sb=document.getElementById('sidebar'); if(sb.classList.contains('open')) toggleSidebar(); const m=document.getElementById('gameMenu'); if(!m.classList.contains('hidden')) toggleMenu(); } });
-        document.addEventListener('click', e => {
-            const m=document.getElementById('gameMenu');
-            const cp=document.getElementById('callPicker');
-            const mb=document.querySelector('[onclick="toggleMenu()"]');
-            const cb=document.querySelector('[onclick*="toggleCallPicker"]');
-            if(!m.classList.contains('hidden')&&!m.contains(e.target)&&!mb?.contains(e.target)) m.classList.add('hidden');
-            if(!cp.classList.contains('hidden')&&!cp.contains(e.target)&&!cb?.contains(e.target)) cp.classList.add('hidden');
-        });
-        let touchStartX=0,touchStartY=0;
-        document.addEventListener('touchstart', e => { touchStartX=e.changedTouches[0].screenX; touchStartY=e.changedTouches[0].screenY; }, {passive:true});
-        document.addEventListener('touchend', e => { const dx=e.changedTouches[0].screenX-touchStartX; const dy=e.changedTouches[0].screenY-touchStartY; const sb=document.getElementById('sidebar'); if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>60) { if(dx>0&&touchStartX<40&&!sb.classList.contains('open')) toggleSidebar(); else if(dx<0&&sb.classList.contains('open')) toggleSidebar(); } }, {passive:true});
+        function toggleSidebar(){const sb=document.getElementById('sidebar'),ov=document.getElementById('sidebarOverlay'),o=sb.classList.toggle('open');ov.classList.toggle('hidden',!o);}
+        document.addEventListener('keydown',e=>{if(e.key==='Escape'){const sb=document.getElementById('sidebar');if(sb.classList.contains('open'))toggleSidebar();const m=document.getElementById('gameMenu');if(!m.classList.contains('hidden'))toggleMenu();}});
+        document.addEventListener('click',e=>{const m=document.getElementById('gameMenu'),cp=document.getElementById('callPicker'),mb=document.querySelector('[onclick="toggleMenu()"]'),cb=document.querySelector('[onclick*="toggleCallPicker"]');if(!m.classList.contains('hidden')&&!m.contains(e.target)&&!mb?.contains(e.target))m.classList.add('hidden');if(!cp.classList.contains('hidden')&&!cp.contains(e.target)&&!cb?.contains(e.target))cp.classList.add('hidden');});
+        let tx=0,ty=0;document.addEventListener('touchstart',e=>{tx=e.changedTouches[0].screenX;ty=e.changedTouches[0].screenY;},{passive:true});
+        document.addEventListener('touchend',e=>{const dx=e.changedTouches[0].screenX-tx,dy=e.changedTouches[0].screenY-ty,sb=document.getElementById('sidebar');if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>60){if(dx>0&&tx<40&&!sb.classList.contains('open'))toggleSidebar();else if(dx<0&&sb.classList.contains('open'))toggleSidebar();}},{passive:true});
 
         // ─── Calls ───
         let pc=null,localStream=null,callTarget=null,callState='idle',callMuted=false,callHasVideo=false;
         const ICE_CONFIG={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
-        function createPC() {
-            pc=new RTCPeerConnection(ICE_CONFIG);
-            if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-            pc.onicecandidate=e=>{if(e.candidate) ws.send(JSON.stringify({type:'ice_candidate',target:callTarget,candidate:e.candidate}));};
-            pc.ontrack=e=>{if(callHasVideo&&e.track.kind==='video'){const r=document.getElementById('remoteVideo');if(r.srcObject!==e.streams[0])r.srcObject=e.streams[0];}else{document.getElementById('remoteAudio').srcObject=e.streams[0];}};
-        }
+        function createPC(){pc=new RTCPeerConnection(ICE_CONFIG);if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.onicecandidate=e=>{if(e.candidate)ws.send(JSON.stringify({type:'ice_candidate',target:callTarget,candidate:e.candidate}));};pc.ontrack=e=>{if(callHasVideo&&e.track.kind==='video'){const r=document.getElementById('remoteVideo');if(r.srcObject!==e.streams[0])r.srcObject=e.streams[0];}else{document.getElementById('remoteAudio').srcObject=e.streams[0];}};}
         function showVideoContainer(){document.getElementById('chat').classList.add('hidden');document.getElementById('videoContainer').classList.remove('hidden');document.getElementById('toggleVideoBtn').classList.remove('hidden');document.getElementById('toggleVideoBtn').textContent='📹';const l=document.getElementById('localVideo');if(localStream)l.srcObject=localStream;}
         function hideVideoContainer(){document.getElementById('videoContainer').classList.add('hidden');document.getElementById('remoteVideo').srcObject=null;document.getElementById('localVideo').srcObject=null;document.getElementById('toggleVideoBtn').classList.add('hidden');document.getElementById('chat').classList.remove('hidden');}
         function startCall(id,name,video){if(callState!=='idle')return;callHasVideo=video;callTarget=id;callState='calling';document.getElementById('callStatus').textContent=`Llamando a ${name}...`;document.getElementById('callBar').classList.remove('hidden');ws.send(JSON.stringify({type:'call_request',target:id,has_video:video}));}
@@ -756,6 +646,8 @@
         function endCall(){if(callTarget&&(callState==='calling'||callState==='connected'))ws.send(JSON.stringify({type:'call_end',target:callTarget}));cleanupCall();}
         function cleanupCall(){if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}callTarget=null;callState='idle';callMuted=false;callHasVideo=false;resetCallUI();}
         function resetCallUI(){hideVideoContainer();document.getElementById('callBar').classList.add('hidden');document.getElementById('incomingCallModal').classList.add('hidden');document.getElementById('muteBtn').textContent='🎤';document.getElementById('remoteAudio').srcObject=null;}
+
+
     </script>
 </body>
 </html>
