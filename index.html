@@ -99,6 +99,14 @@
                 <span class="text-[10px] opacity-80 font-medium">🔒 E2EE</span>
             </div>
         </div>
+        <div class="p-3 border-b border-gray-100 bg-gray-50/30">
+            <div class="flex items-center gap-2">
+                <div id="myAvatarSmall" class="w-9 h-9 rounded-full bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] flex items-center justify-center text-white text-xs font-bold shrink-0 cursor-pointer shadow-sm" onclick="showProfileModal()"></div>
+                <span id="myUsername" class="font-semibold text-sm truncate flex-1 cursor-pointer hover:text-[#5a9fbc] transition" onclick="showProfileModal()"></span>
+                <button onclick="showSettingsModal()" class="w-8 h-8 rounded-full bg-gray-100/30 hover:bg-white/40 flex items-center justify-center text-sm transition" title="Configuración">⚙️</button>
+                <button onclick="logout()" class="w-8 h-8 rounded-full bg-red-100/30 hover:bg-red-200/50 flex items-center justify-center text-xs transition text-red-600" title="Cerrar sesión">🚪</button>
+            </div>
+        </div>
         <div class="p-3 border-b border-gray-100 flex items-center gap-2">
             <input id="roomSearch" type="text" class="flex-1 bg-gray-100/80 rounded-lg px-3 py-2.5 text-sm outline-none border border-transparent focus:border-[#5a9fbc] focus:bg-white transition" placeholder="Buscar grupo...">
             <button onclick="showCreateRoomModal()" class="w-9 h-9 rounded-full bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] text-white flex items-center justify-center text-lg hover:shadow-md shrink-0 transition" title="Crear grupo">+</button>
@@ -117,14 +125,6 @@
                 <button onclick="refreshOnlineUsers()" class="text-gray-300 hover:text-gray-500 text-xs transition">↻</button>
             </div>
             <div id="onlineUsers" class="max-h-28 overflow-y-auto"></div>
-        </div>
-        <div class="p-3 border-t border-gray-100 bg-gray-50/30">
-            <div class="flex items-center gap-2 mb-2">
-                <div id="myAvatarSmall" class="w-9 h-9 rounded-full bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] flex items-center justify-center text-white text-xs font-bold shrink-0 cursor-pointer shadow-sm" onclick="showProfileModal()"></div>
-                <span id="myUsername" class="font-semibold text-sm truncate flex-1 cursor-pointer hover:text-[#5a9fbc] transition" onclick="showProfileModal()"></span>
-                <button onclick="showSettingsModal()" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200 flex items-center justify-center text-sm transition hover:shadow-sm" title="Configuración">⚙️</button>
-            </div>
-            <button onclick="logout()" class="w-full bg-gray-200/70 text-gray-500 rounded-lg py-1.5 text-xs font-semibold hover:bg-gray-300 hover:text-gray-700 transition">Cerrar sesión</button>
         </div>
     </aside>
 
