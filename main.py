@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, engine, Base
 import bcrypt
 import jwt
@@ -95,6 +96,19 @@ app.add_middleware(SecurityHeadersMiddleware)
 class AuthRequest(BaseModel):
     username: str
     password: str
+    phone: str | None = None
+
+
+# ─── PIN generator ─────────────────────────────────────────────────
+def generate_pin(db: Session) -> str:
+    import string as str_mod
+    chars = string.ascii_uppercase + string.digits
+    for _ in range(100):
+        pin = ''.join(secrets.choice(chars) for _ in range(6))
+        existing = db.query(UserDB).filter(UserDB.pin == pin).first()
+        if not existing:
+            return pin
+    raise RuntimeError("No se pudo generar un PIN único")
 
 
 # ─── Auth routes ────────────────────────────────────────────────────
@@ -110,12 +124,14 @@ async def register(req: AuthRequest):
         if existing:
             return JSONResponse({"error": "Usuario ya existe"}, status_code=409)
         hashed = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt())
-        user = UserDB(username=req.username, password_hash=hashed.decode())
+        pin = generate_pin(db)
+        phone = req.phone.strip() if req.phone else None
+        user = UserDB(username=req.username, password_hash=hashed.decode(), pin=pin, phone=phone)
         db.add(user)
         db.commit()
         db.refresh(user)
         token = create_token(user.id, user.username)
-        return {"token": token, "username": user.username, "user_id": user.id}
+        return {"token": token, "username": user.username, "user_id": user.id, "pin": user.pin}
     finally:
         db.close()
 
@@ -302,6 +318,8 @@ async def update_profile(req: Request):
             u.bio = body["bio"][:150]
         if "theme" in body:
             u.theme = body["theme"]
+        if "phone" in body:
+            u.phone = body["phone"][:20] if body["phone"] else None
         db.commit()
         return {"ok": True, "display_name": u.display_name, "bio": u.bio}
     finally:
@@ -347,8 +365,26 @@ async def get_profile(username: str, req: Request):
             "username": u.username,
             "display_name": u.display_name,
             "bio": u.bio,
-            "avatar": u.avatar
+            "avatar": u.avatar,
+            "pin": u.pin,
+            "phone": u.phone
         }
+    finally:
+        db.close()
+
+
+@app.get("/me/pin")
+async def get_my_pin(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u:
+            return JSONResponse({"error": "No encontrado"}, status_code=404)
+        return {"pin": u.pin}
     finally:
         db.close()
 
@@ -409,10 +445,14 @@ async def search_users(req: Request):
     db = SessionLocal()
     try:
         users = db.query(UserDB).filter(
-            UserDB.username.ilike(f"%{q}%"),
+            or_(
+                UserDB.username.ilike(f"%{q}%"),
+                UserDB.pin.ilike(f"%{q}%"),
+                UserDB.phone.ilike(f"%{q}%"),
+            ),
             UserDB.id != user["id"]
         ).limit(20).all()
-        return {"users": [{"username": u.username, "display_name": u.display_name} for u in users]}
+        return {"users": [{"username": u.username, "display_name": u.display_name, "pin": u.pin} for u in users]}
     finally:
         db.close()
 

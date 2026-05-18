@@ -19,6 +19,8 @@ class UserDB(Base):
     bio = Column(String, nullable=True)
     avatar = Column(String, nullable=True)
     theme = Column(Text, nullable=True)
+    pin = Column(String, unique=True, index=True, nullable=True)
+    phone = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
