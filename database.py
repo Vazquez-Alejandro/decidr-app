@@ -21,6 +21,7 @@ class UserDB(Base):
     theme = Column(Text, nullable=True)
     pin = Column(String, unique=True, index=True, nullable=True)
     phone = Column(String, nullable=True)
+    mp_access_token = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

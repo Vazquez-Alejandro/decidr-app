@@ -144,6 +144,7 @@
             <div class="flex gap-1.5 items-center relative shrink-0">
                 <button onclick="toggleMenu()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Juegos">🎮</button>
                 <button onclick="toggleScheduleModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Programar">📅</button>
+                <button onclick="showPaymentModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Pedir pago">💰</button>
                 <div class="relative"><button onclick="toggleCallPicker(false)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Llamada de voz">📞</button></div>
                 <div class="relative">
                     <button onclick="toggleCallPicker(true)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Videollamada">📹</button>
@@ -359,6 +360,27 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)hidePaymentModal()">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="font-bold text-lg">💰 Pedir pago</h3>
+                <button onclick="hidePaymentModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wide">Monto ($)</label>
+                    <input id="payAmount" type="number" step="0.01" min="1" placeholder="1500" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base outline-none focus:border-[#5a9fbc] mt-1">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wide">Concepto</label>
+                    <input id="payConcept" type="text" placeholder="Ej: Cena del sábado" maxlength="50" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base outline-none focus:border-[#5a9fbc] mt-1">
+                </div>
+                <button onclick="sendPaymentRequest()" class="w-full py-3 rounded-xl font-bold text-white transition" style="background:linear-gradient(135deg,#667eea,#764ba2)">Enviar solicitud</button>
             </div>
         </div>
     </div>
@@ -591,6 +613,7 @@
             else if(d.type==="scheduled"){div.className="bubble bubble-scheduled";let display=d.content;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);if(dec!==null)display=dec;else display="🔒 Mensaje cifrado";}div.innerHTML=`<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${d.sender}</div>${escapeHtml(display)}`;}
             else if(d.type==="system"){div.className="system-msg";div.innerText=d.content;if(d.content.includes("Pozo"))document.getElementById('papelitoInput').classList.remove('hidden');}
             else if(d.type==="game_result"){div.className="game-result";div.innerHTML=d.content.replace(/\n/g,'<br>');if(d.content.includes("✊✋✌️")||d.content.includes("empate")||d.content.includes("gana")){document.getElementById('pptInput').classList.add('hidden');pptChosen=false;}}
+            else if(d.type==="payment"){const isMe=d.client_id===clientId;div.className="bubble "+(isMe?"bubble-out":"bubble-in");div.innerHTML=`<div class="text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${escapeHtml(d.sender)}</div><div class="flex items-center gap-2"><span class="text-2xl">💰</span><div><div class="font-bold text-sm">${escapeHtml(d.concept||'Pago')}</div><div class="text-lg font-black" style="color:#667eea">$${parseFloat(d.amount).toFixed(2)}</div></div></div>${!isMe?`<a href="${escapeHtml(d.init_point)}" target="_blank" class="block mt-2 text-center py-2 rounded-lg font-bold text-white text-sm" style="background:linear-gradient(135deg,#667eea,#764ba2)">Pagar con MP</a>`:`<div class="text-xs text-gray-400 mt-1 text-center">💰 Solicitud de pago enviada</div>`}`;}
             chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
         }
         function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
@@ -629,6 +652,24 @@
         function startPPT(){toggleMenu();document.getElementById('pptInput').classList.remove('hidden');pptChosen=false;}
         function pptChoose(o){if(pptChosen)return;pptChosen=true;ws.send(JSON.stringify({type:"game_action",game:"ppt",option:o,room:currentRoom}));document.querySelectorAll('.ppt-btn').forEach(b=>b.classList.remove('selected'));document.querySelector(`.ppt-btn[onclick*="${o}"]`)?.classList.add('selected');}
         function startReassign(){document.getElementById('reassignRow').classList.toggle('hidden');}
+
+        // ─── Payments ───
+        function showPaymentModal(){document.getElementById('paymentModal').classList.remove('hidden');document.getElementById('payAmount').value='';document.getElementById('payConcept').value='';document.getElementById('payAmount').focus();}
+        function hidePaymentModal(){document.getElementById('paymentModal').classList.add('hidden');}
+        async function sendPaymentRequest(){
+            const amount=parseFloat(document.getElementById('payAmount').value);
+            const concept=document.getElementById('payConcept').value.trim();
+            if(!amount||amount<=0)return alert('Ingresá un monto válido');
+            hidePaymentModal();
+            try{
+                const r=await fetch('/payments/create',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({amount,concept:concept||'Pago',room:currentRoom})});
+                const d=await r.json();
+                if(!d.ok)return alert('Error: '+(d.error||'desconocido'));
+                if(ws&&ws.readyState===WebSocket.OPEN){
+                    ws.send(JSON.stringify({type:"payment",room:currentRoom,amount:d.amount,concept:d.concept,init_point:d.init_point,pref_id:d.pref_id}));
+                }
+            }catch(e){alert('Error de conexión');}
+        }
         function doReassign(){const t=document.getElementById('reassignTarget').value.trim();if(!t)return;ws.send(JSON.stringify({type:"game_action",game:"palabras",action:"reassign",target:t,room:currentRoom}));document.getElementById('reassignTarget').value="";document.getElementById('reassignRow').classList.add('hidden');}
 
         // ─── Sidebar ───

@@ -1,5 +1,6 @@
 import os
 import random
+import string
 import json
 import asyncio
 import datetime
@@ -7,6 +8,7 @@ import time
 import secrets
 from pathlib import Path
 from collections import defaultdict
+import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File
 from fastapi.datastructures import UploadFile as UploadFileType
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -30,6 +32,10 @@ else:
     _SECRET_FILE.write_text(JWT_SECRET)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY = 24 * 3600
+
+# ─── Mercado Pago ─────────────────────────────────────────────────
+_MP_TOKEN_FILE = Path(__file__).parent / ".mp_token"
+MP_ACCESS_TOKEN = _MP_TOKEN_FILE.read_text().strip() if _MP_TOKEN_FILE.exists() else ""
 
 
 def create_token(user_id: int, username: str):
@@ -457,6 +463,134 @@ async def search_users(req: Request):
         db.close()
 
 
+# ─── Mercado Pago ──────────────────────────────────────────────────
+MP_API = "https://api.mercadopago.com"
+
+
+@app.post("/payments/create")
+async def create_payment(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    amount = body.get("amount")
+    concept = (body.get("concept") or "Pago Decidr").strip()[:50]
+    room = body.get("room", "default_room")
+    if not amount or amount <= 0:
+        return JSONResponse({"error": "Monto inválido"}, status_code=400)
+    access_token = MP_ACCESS_TOKEN
+    if not access_token:
+        db = SessionLocal()
+        try:
+            u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+            if u and u.mp_access_token:
+                access_token = u.mp_access_token
+        finally:
+            db.close()
+    if not access_token:
+        return JSONResponse({"error": "No hay token de Mercado Pago configurado"}, status_code=400)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{MP_API}/checkout/preferences",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "items": [{
+                        "title": concept,
+                        "quantity": 1,
+                        "unit_price": float(amount),
+                        "currency_id": "ARS"
+                    }],
+                    "back_urls": {
+                        "success": "/",
+                        "failure": "/",
+                        "pending": "/"
+                    },
+                    "auto_return": "approved",
+                    "purpose": "wallet_purchase"
+                },
+                timeout=15
+            )
+            data = resp.json()
+            if resp.status_code != 201:
+                return JSONResponse({"error": f"Error MP: {data.get('message', 'desconocido')}"}, status_code=400)
+            init_point = data.get("init_point") or data.get("sandbox_init_point")
+            pref_id = data.get("id")
+            return {
+                "ok": True,
+                "init_point": init_point,
+                "pref_id": pref_id,
+                "amount": float(amount),
+                "concept": concept
+            }
+    except Exception as e:
+        return JSONResponse({"error": f"Error de conexión con MP: {str(e)}"}, status_code=500)
+
+
+@app.post("/profile/mp-token")
+async def set_mp_token(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    mp_token = (body.get("mp_access_token") or "").strip()
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u:
+            return JSONResponse({"error": "No encontrado"}, status_code=404)
+        u.mp_access_token = mp_token or None
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.post("/admin/mp-token")
+async def set_global_mp_token(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    # Only allow user "Alejandro" to set global token (simple admin check)
+    if user["username"] != "Alejandro":
+        return JSONResponse({"error": "Solo el admin puede configurar esto"}, status_code=403)
+    body = await req.json()
+    mp_token = (body.get("mp_access_token") or "").strip()
+    if not mp_token:
+        return JSONResponse({"error": "Token requerido"}, status_code=400)
+    global MP_ACCESS_TOKEN
+    MP_ACCESS_TOKEN = mp_token
+    _MP_TOKEN_FILE.write_text(mp_token)
+    return {"ok": True}
+
+
+@app.get("/payments/{pref_id}")
+async def get_payment_status(pref_id: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    access_token = MP_ACCESS_TOKEN
+    if not access_token:
+        return JSONResponse({"error": "No hay token MP"}, status_code=400)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{MP_API}/checkout/preferences/{pref_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10
+            )
+            if resp.status_code != 200:
+                return {"status": "unknown"}
+            data = resp.json()
+            return {"status": data.get("status", "unknown")}
+    except Exception:
+        return {"status": "unknown"}
+
+
 @app.post("/rooms/dm/{username}")
 async def create_dm(username: str, req: Request):
     token = req.headers.get("authorization", "").replace("Bearer ", "")
@@ -724,6 +858,29 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             pass
                 except Exception as e:
                     print(f"Broadcast error: {e}")
+
+            elif msg_type == "payment":
+                room = data.get("room", current_room)
+                manager.client_rooms[client_id] = room
+                current_room = room
+                sender_name = manager.user_names.get(client_id, client_id)
+                chat_msg = {
+                    "type": "payment",
+                    "sender": sender_name,
+                    "client_id": client_id,
+                    "room": room,
+                    "amount": data.get("amount"),
+                    "concept": data.get("concept"),
+                    "init_point": data.get("init_point"),
+                    "pref_id": data.get("pref_id")
+                }
+                for cid, conn in manager.active_connections.items():
+                    if cid == client_id:
+                        continue
+                    try:
+                        await conn.send_json(chat_msg)
+                    except Exception:
+                        pass
 
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")

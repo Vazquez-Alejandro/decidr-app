@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 *.db
 certs/
+.mp_token
+.jwt_secret
