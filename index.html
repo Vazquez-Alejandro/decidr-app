@@ -506,8 +506,8 @@
         };
 
         // ─── Theme ───
-        function loadTheme(user){const k='decidr_theme_'+(user||'default');try{const t=JSON.parse(localStorage.getItem(k));if(t){document.documentElement.style.setProperty('--chat-bg',t.bg||'#f0f5f9');document.documentElement.style.setProperty('--chat-bg-image',t.bgImage||'none');document.documentElement.style.setProperty('--bubble-out-bg',t.bubbleColor||'#d0e6f0');document.documentElement.style.setProperty('--font-size',(t.fontSize||14)+'px');document.documentElement.style.setProperty('--font-family',t.fontFamily||'system-ui, -apple-system, sans-serif');}}catch(e){}}
-        function saveTheme(){const k='decidr_theme_'+(myUsername||'default');const t={bg:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg').trim(),bgImage:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg-image').trim(),bubbleColor:getComputedStyle(document.documentElement).getPropertyValue('--bubble-out-bg').trim(),fontSize:parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size')),fontFamily:getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim()};localStorage.setItem(k,JSON.stringify(t));}
+        function loadTheme(user){const k='decidr_theme_'+(user||'default');try{const t=JSON.parse(localStorage.getItem(k));if(t){const s=document.documentElement.style;s.setProperty('--chat-bg',t.bg||'#f0f5f9');s.setProperty('--chat-bg-image',t.bgImage||'none');s.setProperty('--bubble-out-bg',t.bubbleColor||'#d0e6f0');s.setProperty('--font-size',(t.fontSize||14)+'px');s.setProperty('--font-family',t.fontFamily||'system-ui, -apple-system, sans-serif');}}catch(e){}}
+        function saveTheme(){const k='decidr_theme_'+(myUsername||'default');const s=document.documentElement.style;const g=(p,d)=>s.getPropertyValue(p).trim()||d;const t={bg:g('--chat-bg','#f0f5f9'),bgImage:g('--chat-bg-image','none'),bubbleColor:g('--bubble-out-bg','#d0e6f0'),fontSize:parseInt(g('--font-size','14')),fontFamily:g('--font-family','system-ui, -apple-system, sans-serif')};localStorage.setItem(k,JSON.stringify(t));}
         loadTheme();
 
         function selectWallpaper(el){
@@ -711,11 +711,11 @@
         async function doRegister(){const u=document.getElementById('loginUser').value.trim(),p=document.getElementById('loginPass').value,ph=document.getElementById('loginPhone').value.trim()||null;if(!u||!p)return setError('Completá todo');if(u.length<3)return setError('Usuario: mínimo 3 caracteres');setError('');showSpinner();try{const r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p,phone:ph})});const d=await r.json();if(r.ok)setAuth(d.token,d.username,d.user_id,d.pin);else{hideSpinner();setError(d.error||'Error');}}catch(e){hideSpinner();setError('Error de conexión');}}
         function showLogin(){document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('appWrapper').classList.add('hidden');}
         function hideLogin(){document.getElementById('loginScreen').classList.add('hidden');document.getElementById('appWrapper').classList.remove('hidden');}
-        function setAuth(t,u,id,pin){token=t;myUsername=u;myUserId=id;clientId=u;localStorage.setItem('decidr_token',t);localStorage.setItem('decidr_username',u);if(pin)localStorage.setItem('decidr_pin',pin);hideLogin();initApp();}
+        function setAuth(t,u,id,pin){token=t;myUsername=u;myUserId=id;clientId=u;localStorage.setItem('decidr_token',t);localStorage.setItem('decidr_username',u);if(pin)localStorage.setItem('decidr_pin',pin);hideLogin();loadTheme(u);initApp();}
         function logout(){if(ws)ws.close();token=null;myUsername='';localStorage.removeItem('decidr_token');localStorage.removeItem('decidr_username');document.getElementById('loginPass').value='';switchAuthTab('login');showLogin();hideSpinner();}
         document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')authMode==='login'?doLogin():doRegister();});
 
-        function initApp(){Crypto.init();chat=document.getElementById('chat');document.getElementById('myUsername').textContent=myUsername;loadTheme(myUsername);connectWs();fetchRooms();fetchProfile();}
+        function initApp(){Crypto.init();chat=document.getElementById('chat');document.getElementById('myUsername').textContent=myUsername;connectWs();fetchRooms();fetchProfile();}
         (async function(){
             if(token&&myUsername){
                 try{const r=await fetch('/rooms',{headers:{'Authorization':'Bearer '+token}});if(r.ok){clientId=myUsername;hideLogin();initApp();return;}}catch(e){}
