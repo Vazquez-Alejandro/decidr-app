@@ -506,8 +506,8 @@
         };
 
         // ─── Theme ───
-        function loadTheme(){try{const t=JSON.parse(localStorage.getItem('decidr_theme'));if(t){document.documentElement.style.setProperty('--chat-bg',t.bg||'#f0f5f9');document.documentElement.style.setProperty('--chat-bg-image',t.bgImage||'none');document.documentElement.style.setProperty('--bubble-out-bg',t.bubbleColor||'#d0e6f0');document.documentElement.style.setProperty('--font-size',(t.fontSize||14)+'px');document.documentElement.style.setProperty('--font-family',t.fontFamily||'system-ui, -apple-system, sans-serif');}}catch(e){}}
-        function saveTheme(){const t={bg:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg').trim(),bgImage:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg-image').trim(),bubbleColor:getComputedStyle(document.documentElement).getPropertyValue('--bubble-out-bg').trim(),fontSize:parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size')),fontFamily:getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim()};localStorage.setItem('decidr_theme',JSON.stringify(t));}
+        function loadTheme(user){const k='decidr_theme_'+(user||'default');try{const t=JSON.parse(localStorage.getItem(k));if(t){document.documentElement.style.setProperty('--chat-bg',t.bg||'#f0f5f9');document.documentElement.style.setProperty('--chat-bg-image',t.bgImage||'none');document.documentElement.style.setProperty('--bubble-out-bg',t.bubbleColor||'#d0e6f0');document.documentElement.style.setProperty('--font-size',(t.fontSize||14)+'px');document.documentElement.style.setProperty('--font-family',t.fontFamily||'system-ui, -apple-system, sans-serif');}}catch(e){}}
+        function saveTheme(){const k='decidr_theme_'+(myUsername||'default');const t={bg:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg').trim(),bgImage:getComputedStyle(document.documentElement).getPropertyValue('--chat-bg-image').trim(),bubbleColor:getComputedStyle(document.documentElement).getPropertyValue('--bubble-out-bg').trim(),fontSize:parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size')),fontFamily:getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim()};localStorage.setItem(k,JSON.stringify(t));}
         loadTheme();
 
         function selectWallpaper(el){
@@ -632,7 +632,8 @@
             document.getElementById('fontSizeSlider').value=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size'))||14;
             document.getElementById('fontSizeLabel').textContent=document.getElementById('fontSizeSlider').value+'px';
             // Sync preset selection markers from saved theme
-            const t=JSON.parse(localStorage.getItem('decidr_theme'));
+            const tk='decidr_theme_'+(myUsername||'default');
+            const t=JSON.parse(localStorage.getItem(tk));
             if(t){
                 document.querySelectorAll('#wallpaperPresets .theme-preset').forEach(p=>{p.classList.toggle('selected',p.dataset.wallpaper===t.bg);});
                 document.querySelectorAll('[onclick="selectBubbleColor(this)"]').forEach(p=>{p.classList.toggle('selected',p.dataset.color===t.bubbleColor);});
@@ -657,7 +658,7 @@
             // Show brief confirmation toast
             showToast('✅ Cambios guardados');
         }
-        function cancelThemeChanges(){loadTheme();hideSettingsModal();}
+        function cancelThemeChanges(){loadTheme(myUsername);hideSettingsModal();}
         
         function showToast(msg){
             const t=document.createElement('div');
@@ -714,7 +715,7 @@
         function logout(){if(ws)ws.close();token=null;myUsername='';localStorage.removeItem('decidr_token');localStorage.removeItem('decidr_username');document.getElementById('loginPass').value='';switchAuthTab('login');showLogin();hideSpinner();}
         document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')authMode==='login'?doLogin():doRegister();});
 
-        function initApp(){Crypto.init();chat=document.getElementById('chat');document.getElementById('myUsername').textContent=myUsername;connectWs();fetchRooms();fetchProfile();}
+        function initApp(){Crypto.init();chat=document.getElementById('chat');document.getElementById('myUsername').textContent=myUsername;loadTheme(myUsername);connectWs();fetchRooms();fetchProfile();}
         (async function(){
             if(token&&myUsername){
                 try{const r=await fetch('/rooms',{headers:{'Authorization':'Bearer '+token}});if(r.ok){clientId=myUsername;hideLogin();initApp();return;}}catch(e){}
@@ -775,7 +776,30 @@
                 setTimeout(connectWs,500);
             };
         }
-        async function handleMessage(d){if(d.type==="user_list"){connectedUsers=d.users;updatePeerKeys();updateOnlineUsers();requestRoomKey();}else if(d.type==="incoming_call")showIncomingCall(d);else if(d.type==="call_ringing")document.getElementById('callStatus').textContent='Llamando...';else if(d.type==="call_accepted")startWebRTC();else if(d.type==="call_rejected"){alert('Rechazada');resetCallUI();}else if(d.type==="call_ended"){alert('Finalizada');cleanupCall();}else if(d.type==="call_error"){alert(d.content);resetCallUI();}else if(d.type==="offer")handleOffer(d);else if(d.type==="answer")handleAnswer(d);else if(d.type==="ice_candidate")handleIceCandidate(d);else if(d.type==="room_key_share")handleRoomKeyShare(d);else if(d.type==="new_dm"){await fetchRooms();switchRoom(d.room_id,d.from,null);}else appendMessage(d);}
+        async function handleMessage(d){
+            if(d.type==="user_list"){connectedUsers=d.users;updatePeerKeys();updateOnlineUsers();requestRoomKey();}
+            else if(d.type==="incoming_call")showIncomingCall(d);
+            else if(d.type==="call_ringing")document.getElementById('callStatus').textContent='Llamando...';
+            else if(d.type==="call_accepted")startWebRTC();
+            else if(d.type==="call_rejected"){alert('Rechazada');resetCallUI();}
+            else if(d.type==="call_ended"){alert('Finalizada');cleanupCall();}
+            else if(d.type==="call_error"){alert(d.content);resetCallUI();}
+            else if(d.type==="offer")handleOffer(d);
+            else if(d.type==="answer")handleAnswer(d);
+            else if(d.type==="ice_candidate")handleIceCandidate(d);
+            else if(d.type==="room_key_share")handleRoomKeyShare(d);
+            else if(d.type==="new_dm"){await fetchRooms();switchRoom(d.room_id,d.from,null);}
+            else if(d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result"){
+                // Auto-switch to the DM room when receiving a message from another user
+                if(d.room&&d.room!==currentRoom){
+                    const found=myRooms.find(r=>r.id.toString()===d.room);
+                    if(found){switchRoom(found.id,found.name,null);}
+                    else{await fetchRooms();const f2=myRooms.find(r=>r.id.toString()===d.room);if(f2)switchRoom(f2.id,f2.name,null);else return;}
+                }
+                appendMessage(d);
+            }
+            else appendMessage(d);
+        }
 
         function updatePeerKeys(){console.log('updatePeerKeys: connectedUsers',connectedUsers.length);connectedUsers.forEach(u=>{if(u.key&&u.id!==clientId){try{Crypto.peerKeys[u.id]=nacl.util.decodeBase64(u.key);console.log('updatePeerKeys: added',u.id);}catch(e){console.log('updatePeerKeys: failed for',u.id,e);}}});if(hasRoomKey&&Object.keys(Crypto.peerKeys).length>0){console.log('updatePeerKeys: auto-sharing key with peers');shareRoomKeyWithPeers();}}
         function requestRoomKey(){console.log('requestRoomKey: hasRoomKey',hasRoomKey,'roomKeyRequested',roomKeyRequested,'hasLocalKey',!!Crypto.getRoomKey(currentRoom));if(hasRoomKey||roomKeyRequested)return;if(Crypto.getRoomKey(currentRoom)){hasRoomKey=true;return;}roomKeyRequested=true;            setTimeout(()=>{console.log('requestRoomKey timer fired: hasRoomKey now',hasRoomKey);if(!hasRoomKey){const key=Crypto.generateRoomKey();Crypto.setRoomKey(currentRoom,key);hasRoomKey=true;console.log('requestRoomKey: generated local key');shareRoomKeyWithPeers();}roomKeyRequested=false;},800);}
@@ -798,7 +822,6 @@
         function refreshOnlineUsers(){if(ws)ws.send(JSON.stringify({type:"get_users"}));}
 
         function appendMessage(d){
-            if(d.room&&d.room!==currentRoom)return;
             const div=document.createElement('div');
             const t = new Date();
             const ts = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
