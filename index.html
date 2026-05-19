@@ -15,7 +15,7 @@
     <style>
         :root { --chat-bg: #f0f5f9; --bubble-out-bg: #d0e6f0; --bubble-out-text: #1f2937; --bubble-in-bg: #ffffff; --font-size: 14px; --font-family: system-ui, -apple-system, sans-serif; --chat-bg-image: none; --primary: #5a9fbc; --primary-dark: #4a87a0; --primary-light: #e8f4f8; }
         html { font-size: var(--font-size); font-family: var(--font-family); }
-        .chat-bg { background: var(--chat-bg-image, var(--chat-bg)); background-size: cover; background-position: center; background-attachment: fixed; }
+        .chat-bg { background-color: var(--chat-bg); background-image: var(--chat-bg-image); background-size: cover; background-position: center; background-attachment: fixed; }
         .bubble { max-width: 80%; padding: 8px 14px; border-radius: 12px; margin-bottom: 6px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.13); word-break: break-word; }
         .bubble-in { background: var(--bubble-in-bg); align-self: flex-start; border-top-left-radius: 4px; }
         .bubble-out { background: var(--bubble-out-bg); color: var(--bubble-out-text); align-self: flex-end; border-top-right-radius: 4px; }
@@ -440,6 +440,33 @@
         </div>
     </div>
 
+    <!-- Message info popup -->
+    <div id="msgInfoModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30" onclick="if(event.target===this)hideMsgInfo()">
+        <div class="bg-white rounded-2xl shadow-2xl w-64 mx-4 overflow-hidden" onclick="event.stopPropagation()">
+            <div class="p-4 space-y-2 text-sm">
+                <div class="font-bold text-gray-800">ℹ️ Info del mensaje</div>
+                <div class="border-t border-gray-100 pt-2 space-y-1">
+                    <div><span class="text-gray-400">De:</span> <span id="msgInfoSender" class="font-medium"></span></div>
+                    <div><span class="text-gray-400">Enviado:</span> <span id="msgInfoTime" class="font-medium"></span></div>
+                    <div><span class="text-gray-400">Recibido:</span> <span id="msgInfoReceived" class="font-medium"></span></div>
+                </div>
+                <button onclick="hideMsgInfo()" class="mt-2 w-full py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Other user profile modal -->
+    <div id="otherProfileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30" onclick="if(event.target===this)hideOtherProfile()">
+        <div class="bg-white rounded-2xl shadow-2xl w-72 mx-4 overflow-hidden" onclick="event.stopPropagation()">
+            <div class="p-5" id="otherProfileContent">
+                <div class="text-center text-gray-400">Cargando...</div>
+            </div>
+            <div class="px-5 pb-4">
+                <button onclick="hideOtherProfile()" class="w-full py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- PIN prompt modal -->
     <div id="paymentPinModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)hidePaymentPinModal()">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden">
@@ -639,6 +666,40 @@
             document.body.appendChild(t);
             setTimeout(()=>{t.remove();},2000);
         }
+        
+        // ─── Message info ───
+        function showMsgInfo(el){
+            const sender=el.dataset.sender||'';
+            document.getElementById('msgInfoSender').textContent=sender||'Vos';
+            document.getElementById('msgInfoTime').textContent=el.dataset.timestamp||'—';
+            document.getElementById('msgInfoReceived').textContent=new Date().toLocaleString();
+            document.getElementById('msgInfoModal').classList.remove('hidden');
+        }
+        function hideMsgInfo(){document.getElementById('msgInfoModal').classList.add('hidden');}
+        
+        // ─── View other user's profile ───
+        async function showOtherProfile(username){
+            try{
+                const r=await fetch(`/profile/${username}`,{headers:{'Authorization':'Bearer '+token}});
+                if(r.status===401){invalidToken();return;}
+                const d=await r.json();
+                if(!r.ok){alert(d.error||'Error');return;}
+                let extras='';
+                if(d.is_emergency_contact)extras+=`<button onclick="showEmergencyActions('${d.username}')" class="mt-2 w-full py-2 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition">🚨 Desactivar pagos</button>`;
+                document.getElementById('otherProfileContent').innerHTML=`
+                    <div class="text-center mb-3">
+                        <div class="w-16 h-16 rounded-full bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] flex items-center justify-center text-white text-xl font-bold mx-auto shadow-md">${(d.display_name||d.username)[0].toUpperCase()}</div>
+                        <div class="font-bold text-base mt-2">${escapeHtml(d.display_name||d.username)}</div>
+                        <div class="text-xs text-gray-400">@${d.username} ${d.pin?'· PIN: '+d.pin:''}</div>
+                    </div>
+                    ${d.bio?`<div class="text-sm text-gray-600 text-center border-t border-gray-100 pt-2">${escapeHtml(d.bio)}</div>`:''}
+                    ${d.phone?`<div class="text-xs text-gray-400 text-center mt-1">📱 ${d.phone}</div>`:''}
+                    ${extras}
+                `;
+                document.getElementById('otherProfileModal').classList.remove('hidden');
+            }catch(e){alert('Error al cargar perfil');}
+        }
+        function hideOtherProfile(){document.getElementById('otherProfileModal').classList.add('hidden');}
 
         // ─── Auth ───
         function switchAuthTab(m){authMode=m;document.getElementById('tabLogin').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='login'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('tabRegister').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='register'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('authBtn').textContent=m==='login'?'Iniciar sesión':'Crear cuenta';document.getElementById('authBtn').onclick=m==='login'?doLogin:doRegister;document.getElementById('authToggleText').textContent=m==='login'?'¿No tenés cuenta?':'¿Ya tenés cuenta?';document.getElementById('authToggleLink').textContent=m==='login'?'Crear una':'Iniciar sesión';document.getElementById('authToggleLink').onclick=function(e){e.preventDefault();switchAuthTab(m==='login'?'register':'login');};document.getElementById('loginPhone').classList.toggle('hidden',m!=='register');document.getElementById('loginError').classList.add('hidden');}
@@ -676,7 +737,7 @@
         function showCreateRoomModal(){document.getElementById('createRoomModal').classList.remove('hidden');document.getElementById('roomError').classList.add('hidden');}
         function hideCreateRoomModal(){document.getElementById('createRoomModal').classList.add('hidden');}
         async function createRoom(){const name=document.getElementById('newRoomName').value.trim();if(!name){document.getElementById('roomError').textContent='Escribí un nombre';document.getElementById('roomError').classList.remove('hidden');return;}try{const r=await fetch('/rooms',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({name})});const d=await r.json();if(r.ok){document.getElementById('newRoomName').value='';hideCreateRoomModal();await fetchRooms();switchRoom(d.id,d.name,null);}else{document.getElementById('roomError').textContent=d.error;document.getElementById('roomError').classList.remove('hidden');}}catch(e){document.getElementById('roomError').textContent='Error';document.getElementById('roomError').classList.remove('hidden');}}
-        function switchRoom(id,name,el){console.log('switchRoom called',id,name);currentRoom=id.toString();currentRoomName=name||'General';document.querySelectorAll('.room-item').forEach(r=>r.classList.remove('room-active'));if(el)el.classList.add('room-active');else{document.querySelectorAll('.room-item').forEach(r=>{if(r.dataset.room===currentRoom)r.classList.add('room-active');});}document.getElementById('roomTitle').textContent=currentRoomName;chat.innerHTML=`<div class="system-msg italic">🔒 ${currentRoomName}</div>`;hasRoomKey=false;roomKeyRequested=false;const existing=Crypto.getRoomKey(currentRoom);if(existing)hasRoomKey=true;requestRoomKey();if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'set_room',room:currentRoom}));}
+        function switchRoom(id,name,el){console.log('switchRoom called',id,name);currentRoom=id.toString();currentRoomName=name||'General';document.querySelectorAll('.room-item').forEach(r=>r.classList.remove('room-active'));if(el)el.classList.add('room-active');else{document.querySelectorAll('.room-item').forEach(r=>{if(r.dataset.room===currentRoom)r.classList.add('room-active');});}const titleEl=document.getElementById('roomTitle');titleEl.textContent=currentRoomName;titleEl.className='font-bold leading-tight text-sm truncate cursor-pointer hover:opacity-80';titleEl.title='Ver perfil';const room=myRooms.find(r=>r.id.toString()===currentRoom);if(room&&room.is_dm){titleEl.onclick=function(){showOtherProfile(currentRoomName);};}else{titleEl.onclick=null;}chat.innerHTML=`<div class="system-msg italic">🔒 ${currentRoomName}</div>`;hasRoomKey=false;roomKeyRequested=false;const existing=Crypto.getRoomKey(currentRoom);if(existing)hasRoomKey=true;requestRoomKey();if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'set_room',room:currentRoom}));}
         let searchTimeout=null;
         async function searchUsers(q){
             const el=document.getElementById('contactResults');
@@ -739,8 +800,11 @@
         function appendMessage(d){
             if(d.room&&d.room!==currentRoom)return;
             const div=document.createElement('div');
-            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;if(!isMe)div.innerHTML=`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>${escapeHtml(display)}`;else div.innerText=display;}
-            else if(d.type==="scheduled"){div.className="bubble bubble-scheduled";let display=d.content;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);if(dec!==null)display=dec;else display="🔒 Mensaje cifrado";}div.innerHTML=`<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${d.sender}</div>${escapeHtml(display)}`;}
+            const t = new Date();
+            const ts = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
+            const tsFull = t.toLocaleString();
+            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;if(!isMe)div.innerHTML=`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>${escapeHtml(display)}<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;else div.innerHTML=escapeHtml(display)+`<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';div.style.cursor='pointer';div.onclick=function(e){e.stopPropagation();showMsgInfo(this);};}
+            else if(d.type==="scheduled"){div.className="bubble bubble-scheduled";let display=d.content;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);if(dec!==null)display=dec;else display="🔒 Mensaje cifrado";}div.innerHTML=`<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${d.sender}</div>${escapeHtml(display)}<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;}
             else if(d.type==="system"){div.className="system-msg";div.innerText=d.content;if(d.content.includes("Pozo"))document.getElementById('papelitoInput').classList.remove('hidden');}
             else if(d.type==="game_result"){div.className="game-result";div.innerHTML=d.content.replace(/\n/g,'<br>');if(d.content.includes("✊✋✌️")||d.content.includes("empate")||d.content.includes("gana")){document.getElementById('pptInput').classList.add('hidden');pptChosen=false;}}
             else if(d.type==="payment"){const isMe=d.client_id===clientId;div.className="bubble "+(isMe?"bubble-out":"bubble-in");div.innerHTML=`<div class="text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${escapeHtml(d.sender)}</div><div class="flex items-center gap-2"><span class="text-2xl">💰</span><div><div class="font-bold text-sm">${escapeHtml(d.concept||'Pago')}</div><div class="text-lg font-black" style="color:#667eea">$${parseFloat(d.amount).toFixed(2)}</div></div></div>${!isMe?`<a href="${escapeHtml(d.init_point)}" target="_blank" class="block mt-2 text-center py-2 rounded-lg font-bold text-white text-sm" style="background:linear-gradient(135deg,#667eea,#764ba2)">Pagar con MP</a>`:`<div class="text-xs text-gray-400 mt-1 text-center">💰 Solicitud de pago enviada</div>`}`;}
