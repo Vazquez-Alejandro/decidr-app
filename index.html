@@ -371,6 +371,20 @@
                     <!-- Privacy -->
                     <div id="settingsPrivacy" class="hidden space-y-3">
                         <div class="settings-card">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">🚨 Contacto de emergencia</p>
+                            <div>
+                                <label class="text-xs text-gray-500">Usuario de confianza</label>
+                                <input id="settingsEmergencyContact" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none mt-1" maxlength="20" placeholder="Ej: novia">
+                            </div>
+                            <div class="mt-2">
+                                <label class="text-xs text-gray-500">Código de desactivación (4-6 dígitos)</label>
+                                <input id="settingsDisableCode" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none mt-1" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="······">
+                            </div>
+                            <div id="settingsEmergencyStatus" class="text-xs text-gray-400 mt-1"></div>
+                            <div id="settingsPaymentsDisabledBanner" class="hidden mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium text-center">🚫 Pagos desactivados de forma remota</div>
+                            <button onclick="saveEmergencySettings()" class="mt-2 w-full py-2 rounded-lg bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white text-xs font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] transition">Guardar contacto de emergencia</button>
+                        </div>
+                        <div class="settings-card">
                             <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Usuarios bloqueados</p>
                             <div id="blockedUsersList">
                                 <p class="text-sm text-gray-400">Cargando...</p>
@@ -378,6 +392,10 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <div class="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+                <button onclick="cancelThemeChanges()" class="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-100 transition">Cancelar</button>
+                <button onclick="saveThemeChanges()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white text-sm font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] shadow-sm transition">Guardar cambios</button>
             </div>
         </div>
     </div>
@@ -473,7 +491,6 @@
                 document.documentElement.style.setProperty('--chat-bg',v);
                 document.documentElement.style.setProperty('--chat-bg-image','none');
             }
-            saveTheme();
         }
         function uploadWallpaper(e){
             const file=e.target.files[0];if(!file)return;
@@ -481,17 +498,15 @@
                 document.documentElement.style.setProperty('--chat-bg','#f0f5f9');
                 document.documentElement.style.setProperty('--chat-bg-image',`url(${ev.target.result})`);
                 document.querySelectorAll('#wallpaperPresets .theme-preset').forEach(p=>p.classList.remove('selected'));
-                saveTheme();
             };reader.readAsDataURL(file);
         }
         function selectBubbleColor(el){
             document.querySelectorAll('[onclick="selectBubbleColor(this)"]').forEach(p=>p.classList.remove('selected'));
             el.classList.add('selected');
             document.documentElement.style.setProperty('--bubble-out-bg',el.dataset.color);
-            saveTheme();
         }
-        function applyFontSize(v){document.documentElement.style.setProperty('--font-size',v+'px');document.getElementById('fontSizeLabel').textContent=v+'px';saveTheme();}
-        function applyFontFamily(v){document.documentElement.style.setProperty('--font-family',v);saveTheme();}
+        function applyFontSize(v){document.documentElement.style.setProperty('--font-size',v+'px');document.getElementById('fontSizeLabel').textContent=v+'px';}
+        function applyFontFamily(v){document.documentElement.style.setProperty('--font-family',v);}
 
         function switchSettingsTab(tab,el){
             document.querySelectorAll('.settings-tab').forEach(t=>t.classList.remove('active'));
@@ -589,6 +604,19 @@
             document.getElementById('settingsModal').classList.remove('hidden');
             document.getElementById('fontSizeSlider').value=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size'))||14;
             document.getElementById('fontSizeLabel').textContent=document.getElementById('fontSizeSlider').value+'px';
+            // Sync preset selection markers from saved theme
+            const t=JSON.parse(localStorage.getItem('decidr_theme'));
+            if(t){
+                document.querySelectorAll('#wallpaperPresets .theme-preset').forEach(p=>{p.classList.toggle('selected',p.dataset.wallpaper===t.bg);});
+                document.querySelectorAll('[onclick="selectBubbleColor(this)"]').forEach(p=>{p.classList.toggle('selected',p.dataset.color===t.bubbleColor);});
+            }
+            // Load emergency contact data
+            document.getElementById('settingsEmergencyContact').value=myProfileData.emergency_contact||'';
+            document.getElementById('settingsDisableCode').value='';
+            const ec=myProfileData.emergency_contact;
+            document.getElementById('settingsEmergencyStatus').textContent=ec?'✅ Contacto: @'+ec:'❌ Sin configurar';
+            const pb=document.getElementById('settingsPaymentsDisabledBanner');
+            if(myProfileData.payments_disabled){pb.classList.remove('hidden');}else{pb.classList.add('hidden');}
             loadBlockedUsers();
         }
         function hideSettingsModal(){
@@ -596,6 +624,8 @@
             if(box){box.classList.add('closing');setTimeout(()=>{document.getElementById('settingsModal').classList.add('hidden');box.classList.remove('closing');},150);}
             else document.getElementById('settingsModal').classList.add('hidden');
         }
+        function saveThemeChanges(){saveTheme();hideSettingsModal();}
+        function cancelThemeChanges(){loadTheme();hideSettingsModal();}
 
         // ─── Auth ───
         function switchAuthTab(m){authMode=m;document.getElementById('tabLogin').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='login'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('tabRegister').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='register'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('authBtn').textContent=m==='login'?'Iniciar sesión':'Crear cuenta';document.getElementById('authBtn').onclick=m==='login'?doLogin:doRegister;document.getElementById('authToggleText').textContent=m==='login'?'¿No tenés cuenta?':'¿Ya tenés cuenta?';document.getElementById('authToggleLink').textContent=m==='login'?'Crear una':'Iniciar sesión';document.getElementById('authToggleLink').onclick=function(e){e.preventDefault();switchAuthTab(m==='login'?'register':'login');};document.getElementById('loginPhone').classList.toggle('hidden',m!=='register');document.getElementById('loginError').classList.add('hidden');}
@@ -793,6 +823,25 @@
                 alert('✅ '+d.message);
                 hideEmergencyModal();
             }catch(e){document.getElementById('emergencyError').textContent='Error de conexión';document.getElementById('emergencyError').classList.remove('hidden');}
+        }
+        async function saveEmergencySettings(){
+            const ec=document.getElementById('settingsEmergencyContact').value.trim();
+            const dc=document.getElementById('settingsDisableCode').value.trim();
+            if(ec||dc){
+                if(dc&&!/^\d{4,6}$/.test(dc)){alert('Código: 4 a 6 dígitos');return;}
+                const pw=prompt('Ingresá tu contraseña actual para guardar contacto de emergencia:');
+                if(!pw){alert('Contraseña requerida');return;}
+                try{
+                    const r=await fetch('/profile/emergency',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({emergency_contact:ec,remote_disable_code:dc,current_password:pw})});
+                    const d=await r.json();
+                    if(!r.ok){alert(d.error||'Error');return;}
+                    myProfileData.emergency_contact=ec;
+                    document.getElementById('settingsEmergencyStatus').textContent=ec?'✅ Contacto: @'+ec:'❌ Sin configurar';
+                    alert('✅ Contacto de emergencia guardado');
+                }catch(e){alert('Error de conexión');}
+            } else {
+                alert('Completá al menos el usuario de confianza');
+            }
         }
 
         // ─── Sidebar ───
