@@ -268,6 +268,11 @@
                         <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">📞 Teléfono</label>
                         <input id="profilePhone" type="tel" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none" maxlength="20" placeholder="Opcional">
                     </div>
+                    <div>
+                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">🔐 PIN de pago <span class="text-gray-300 font-normal normal-case text-[10px]">(4-6 dígitos, opcional)</span></label>
+                        <input id="profilePaymentPin" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="Sin PIN configurado">
+                        <div id="paymentPinStatus" class="text-xs text-gray-400 mt-1"></div>
+                    </div>
                     <div class="flex gap-2 pt-1">
                         <button onclick="hideProfileModal()" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 hover:border-gray-300 transition">Cancelar</button>
                         <button onclick="saveProfile()" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white text-sm font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] shadow-sm transition">Guardar</button>
@@ -385,6 +390,21 @@
         </div>
     </div>
 
+    <!-- PIN prompt modal -->
+    <div id="paymentPinModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)hidePaymentPinModal()">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden">
+            <div class="p-5 border-b border-gray-100">
+                <h3 class="font-bold text-lg text-center">🔐 PIN de pago</h3>
+                <p class="text-xs text-gray-400 text-center mt-1">Ingresá tu PIN para autorizar el pago</p>
+            </div>
+            <div class="p-5 space-y-4">
+                <input id="paymentPinInput" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base outline-none focus:border-[#5a9fbc] text-center text-2xl tracking-[0.5em]" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="······" autocomplete="off">
+                <p id="paymentPinError" class="text-red-500 text-xs text-center hidden"></p>
+                <button onclick="confirmPaymentPin()" class="w-full py-3 rounded-xl font-bold text-white transition" style="background:linear-gradient(135deg,#667eea,#764ba2)">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let token=localStorage.getItem('decidr_token');
         let myUsername=localStorage.getItem('decidr_username')||'';
@@ -475,6 +495,8 @@
             document.getElementById('profileBio').value=myProfileData.bio||'';
             document.getElementById('profilePhone').value=myProfileData.phone||'';
             document.getElementById('profilePin').textContent=myProfileData.pin||localStorage.getItem('decidr_pin')||'---';
+            document.getElementById('profilePaymentPin').value='';
+            document.getElementById('paymentPinStatus').textContent=myProfileData.has_payment_pin?'✅ PIN configurado':'❌ Sin configurar';
             updateAvatarUI();
             updateProfileCounts();
             document.getElementById('profileModal').classList.remove('hidden');
@@ -498,7 +520,19 @@
         }
         async function saveProfile(){
             const name=document.getElementById('profileName').value.trim(),bio=document.getElementById('profileBio').value.trim(),phone=document.getElementById('profilePhone').value.trim()||null;
-            try{const r=await fetch('/profile',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({display_name:name||myUsername,bio:bio||'',phone:phone})});const d=await r.json();if(r.ok){myProfileData.display_name=d.display_name;myProfileData.bio=d.bio;myProfileData.phone=phone;updateAvatarUI();hideProfileModal();}else{document.getElementById('profileError').textContent=d.error;document.getElementById('profileError').classList.remove('hidden');}}catch(e){document.getElementById('profileError').textContent='Error';document.getElementById('profileError').classList.remove('hidden');}
+            const pin=document.getElementById('profilePaymentPin').value.trim();
+            try{
+                if(pin){
+                    if(!/^\d{4,6}$/.test(pin)){document.getElementById('profileError').textContent='PIN: 4 a 6 dígitos numéricos';document.getElementById('profileError').classList.remove('hidden');return;}
+                    const pw=prompt('Ingresá tu contraseña actual para cambiar el PIN de pago:');
+                    if(!pw){document.getElementById('profileError').textContent='Contraseña requerida';document.getElementById('profileError').classList.remove('hidden');return;}
+                    const pr=await fetch('/profile/payment-pin',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({pin,current_password:pw})});
+                    const pd=await pr.json();
+                    if(!pr.ok){document.getElementById('profileError').textContent=pd.error||'Error al configurar PIN';document.getElementById('profileError').classList.remove('hidden');return;}
+                    myProfileData.has_payment_pin=true;
+                    document.getElementById('paymentPinStatus').textContent='✅ PIN configurado';
+                }
+                const r=await fetch('/profile',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({display_name:name||myUsername,bio:bio||'',phone:phone})});const d=await r.json();if(r.ok){myProfileData.display_name=d.display_name;myProfileData.bio=d.bio;myProfileData.phone=phone;updateAvatarUI();hideProfileModal();}else{document.getElementById('profileError').textContent=d.error;document.getElementById('profileError').classList.remove('hidden');}}catch(e){document.getElementById('profileError').textContent='Error';document.getElementById('profileError').classList.remove('hidden');}
         }
 
         function showSettingsModal(){
@@ -538,7 +572,7 @@
         })();
 
         async function fetchProfile(){
-            try{const r=await fetch(`/profile/${myUsername}`,{headers:{'Authorization':'Bearer '+token}});if(r.status===401){invalidToken();return;}const d=await r.json();if(r.ok){myProfileData={display_name:d.display_name||myUsername,bio:d.bio||'',avatar:d.avatar,pin:d.pin,phone:d.phone};if(d.pin)localStorage.setItem('decidr_pin',d.pin);document.getElementById('myUsername').textContent=d.display_name||myUsername;updateAvatarUI();}}catch(e){}
+            try{const r=await fetch(`/profile/${myUsername}`,{headers:{'Authorization':'Bearer '+token}});if(r.status===401){invalidToken();return;}const d=await r.json();if(r.ok){myProfileData={display_name:d.display_name||myUsername,bio:d.bio||'',avatar:d.avatar,pin:d.pin,phone:d.phone,has_payment_pin:d.has_payment_pin||false};if(d.pin)localStorage.setItem('decidr_pin',d.pin);document.getElementById('myUsername').textContent=d.display_name||myUsername;updateAvatarUI();}}catch(e){}
         }
 
         // ─── Rooms ───
@@ -656,13 +690,31 @@
         // ─── Payments ───
         function showPaymentModal(){document.getElementById('paymentModal').classList.remove('hidden');document.getElementById('payAmount').value='';document.getElementById('payConcept').value='';document.getElementById('payAmount').focus();}
         function hidePaymentModal(){document.getElementById('paymentModal').classList.add('hidden');}
-        async function sendPaymentRequest(){
+        let pendingPayment=null;
+        function showPaymentPinModal(){document.getElementById('paymentPinModal').classList.remove('hidden');document.getElementById('paymentPinInput').value='';document.getElementById('paymentPinError').classList.add('hidden');document.getElementById('paymentPinInput').focus();}
+        function hidePaymentPinModal(){document.getElementById('paymentPinModal').classList.add('hidden');pendingPayment=null;}
+        function sendPaymentRequest(){
             const amount=parseFloat(document.getElementById('payAmount').value);
             const concept=document.getElementById('payConcept').value.trim();
             if(!amount||amount<=0)return alert('Ingresá un monto válido');
             hidePaymentModal();
+            pendingPayment={amount,concept:concept||'Pago'};
+            if(myProfileData.has_payment_pin)showPaymentPinModal();
+            else doSendPayment();
+        }
+        async function confirmPaymentPin(){
+            const pin=document.getElementById('paymentPinInput').value.trim();
+            if(!pin){document.getElementById('paymentPinError').textContent='Ingresá el PIN';document.getElementById('paymentPinError').classList.remove('hidden');return;}
+            document.getElementById('paymentPinError').classList.add('hidden');
+            pendingPayment.payment_pin=pin;
+            await doSendPayment();
+        }
+        async function doSendPayment(){
+            const p=pendingPayment;if(!p)return;
+            pendingPayment=null;
+            hidePaymentPinModal();
             try{
-                const r=await fetch('/payments/create',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({amount,concept:concept||'Pago',room:currentRoom})});
+                const r=await fetch('/payments/create',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({amount:p.amount,concept:p.concept||'Pago',room:currentRoom,payment_pin:p.payment_pin||''})});
                 const d=await r.json();
                 if(!d.ok)return alert('Error: '+(d.error||'desconocido'));
                 if(ws&&ws.readyState===WebSocket.OPEN){
@@ -671,6 +723,7 @@
             }catch(e){alert('Error de conexión');}
         }
         function doReassign(){const t=document.getElementById('reassignTarget').value.trim();if(!t)return;ws.send(JSON.stringify({type:"game_action",game:"palabras",action:"reassign",target:t,room:currentRoom}));document.getElementById('reassignTarget').value="";document.getElementById('reassignRow').classList.add('hidden');}
+        document.getElementById('paymentPinInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')confirmPaymentPin();});
 
         // ─── Sidebar ───
         function toggleSidebar(){const sb=document.getElementById('sidebar'),ov=document.getElementById('sidebarOverlay'),o=sb.classList.toggle('open');ov.classList.toggle('hidden',!o);}

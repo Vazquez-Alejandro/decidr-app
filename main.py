@@ -373,7 +373,8 @@ async def get_profile(username: str, req: Request):
             "bio": u.bio,
             "avatar": u.avatar,
             "pin": u.pin,
-            "phone": u.phone
+            "phone": u.phone,
+            "has_payment_pin": u.payment_pin_hash is not None
         }
     finally:
         db.close()
@@ -479,15 +480,19 @@ async def create_payment(req: Request):
     room = body.get("room", "default_room")
     if not amount or amount <= 0:
         return JSONResponse({"error": "Monto inválido"}, status_code=400)
-    access_token = MP_ACCESS_TOKEN
-    if not access_token:
-        db = SessionLocal()
-        try:
-            u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
-            if u and u.mp_access_token:
-                access_token = u.mp_access_token
-        finally:
-            db.close()
+    # Verify payment PIN if set
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if u and u.payment_pin_hash:
+            pin = body.get("payment_pin", "")
+            if not pin or not bcrypt.checkpw(pin.encode(), u.payment_pin_hash.encode()):
+                return JSONResponse({"error": "PIN de pago incorrecto"}, status_code=403)
+        access_token = MP_ACCESS_TOKEN
+        if not access_token and u and u.mp_access_token:
+            access_token = u.mp_access_token
+    finally:
+        db.close()
     if not access_token:
         return JSONResponse({"error": "No hay token de Mercado Pago configurado"}, status_code=400)
     try:
@@ -542,6 +547,31 @@ async def set_mp_token(req: Request):
         if not u:
             return JSONResponse({"error": "No encontrado"}, status_code=404)
         u.mp_access_token = mp_token or None
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.post("/profile/payment-pin")
+async def set_payment_pin(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    pin = body.get("pin", "")
+    current_password = body.get("current_password", "")
+    if not pin or not pin.isdigit() or len(pin) < 4 or len(pin) > 6:
+        return JSONResponse({"error": "PIN debe ser numérico de 4 a 6 dígitos"}, status_code=400)
+    if not current_password:
+        return JSONResponse({"error": "Contraseña actual requerida"}, status_code=400)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u or not u.password_hash or not bcrypt.checkpw(current_password.encode(), u.password_hash.encode()):
+            return JSONResponse({"error": "Contraseña incorrecta"}, status_code=403)
+        u.payment_pin_hash = bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()
         db.commit()
         return {"ok": True}
     finally:

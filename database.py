@@ -22,6 +22,7 @@ class UserDB(Base):
     pin = Column(String, unique=True, index=True, nullable=True)
     phone = Column(String, nullable=True)
     mp_access_token = Column(String, nullable=True)
+    payment_pin_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
