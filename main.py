@@ -374,7 +374,10 @@ async def get_profile(username: str, req: Request):
             "avatar": u.avatar,
             "pin": u.pin,
             "phone": u.phone,
-            "has_payment_pin": u.payment_pin_hash is not None
+            "has_payment_pin": u.payment_pin_hash is not None,
+            "emergency_contact": u.emergency_contact or None,
+            "payments_disabled": u.payments_disabled or False,
+            "is_emergency_contact": u.emergency_contact == user["username"]
         }
     finally:
         db.close()
@@ -459,7 +462,7 @@ async def search_users(req: Request):
             ),
             UserDB.id != user["id"]
         ).limit(20).all()
-        return {"users": [{"username": u.username, "display_name": u.display_name, "pin": u.pin} for u in users]}
+        return {"users": [{"username": u.username, "display_name": u.display_name, "pin": u.pin, "is_emergency_contact": u.emergency_contact == user["username"]} for u in users]}
     finally:
         db.close()
 
@@ -484,7 +487,11 @@ async def create_payment(req: Request):
     db = SessionLocal()
     try:
         u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
-        if u and u.payment_pin_hash:
+        if not u:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        if u.payments_disabled:
+            return JSONResponse({"error": "Los pagos están desactivados para esta cuenta"}, status_code=403)
+        if u.payment_pin_hash:
             pin = body.get("payment_pin", "")
             if not pin or not bcrypt.checkpw(pin.encode(), u.payment_pin_hash.encode()):
                 return JSONResponse({"error": "PIN de pago incorrecto"}, status_code=403)
@@ -574,6 +581,89 @@ async def set_payment_pin(req: Request):
         u.payment_pin_hash = bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()
         db.commit()
         return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.post("/profile/emergency")
+async def set_emergency_contact(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    contact = (body.get("emergency_contact") or "").strip()
+    code = body.get("remote_disable_code", "")
+    current_password = body.get("current_password", "")
+    if not current_password:
+        return JSONResponse({"error": "Contraseña actual requerida"}, status_code=400)
+    if code and (not code.isdigit() or len(code) < 4 or len(code) > 6):
+        return JSONResponse({"error": "Código: 4 a 6 dígitos numéricos"}, status_code=400)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u or not u.password_hash or not bcrypt.checkpw(current_password.encode(), u.password_hash.encode()):
+            return JSONResponse({"error": "Contraseña incorrecta"}, status_code=403)
+        u.emergency_contact = contact or None
+        if code:
+            u.remote_disable_code_hash = bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode()
+        elif not contact:
+            u.remote_disable_code_hash = None
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.post("/payments/remote-disable")
+async def remote_disable_payments(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    target_username = (body.get("target_username") or "").strip()
+    code = body.get("code", "")
+    if not target_username or not code:
+        return JSONResponse({"error": "Faltan datos"}, status_code=400)
+    db = SessionLocal()
+    try:
+        target = db.query(UserDB).filter(UserDB.username == target_username).first()
+        if not target:
+            return JSONResponse({"error": "Usuario destino no encontrado"}, status_code=404)
+        if target.emergency_contact != user["username"]:
+            return JSONResponse({"error": "No sos el contacto de emergencia de este usuario"}, status_code=403)
+        if not target.remote_disable_code_hash or not bcrypt.checkpw(code.encode(), target.remote_disable_code_hash.encode()):
+            return JSONResponse({"error": "Código de desactivación incorrecto"}, status_code=403)
+        target.payments_disabled = True
+        db.commit()
+        return {"ok": True, "message": f"Pagos desactivados para @{target_username}"}
+    finally:
+        db.close()
+
+
+@app.post("/payments/remote-enable")
+async def remote_enable_payments(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    target_username = (body.get("target_username") or "").strip()
+    code = body.get("code", "")
+    if not target_username or not code:
+        return JSONResponse({"error": "Faltan datos"}, status_code=400)
+    db = SessionLocal()
+    try:
+        target = db.query(UserDB).filter(UserDB.username == target_username).first()
+        if not target:
+            return JSONResponse({"error": "Usuario destino no encontrado"}, status_code=404)
+        if target.emergency_contact != user["username"]:
+            return JSONResponse({"error": "No sos el contacto de emergencia de este usuario"}, status_code=403)
+        if not target.remote_disable_code_hash or not bcrypt.checkpw(code.encode(), target.remote_disable_code_hash.encode()):
+            return JSONResponse({"error": "Código de desactivación incorrecto"}, status_code=403)
+        target.payments_disabled = False
+        db.commit()
+        return {"ok": True, "message": f"Pagos reactivados para @{target_username}"}
     finally:
         db.close()
 

@@ -273,6 +273,19 @@
                         <input id="profilePaymentPin" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="Sin PIN configurado">
                         <div id="paymentPinStatus" class="text-xs text-gray-400 mt-1"></div>
                     </div>
+                    <div class="border-t border-gray-100 pt-4 mt-2">
+                        <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">🚨 Contacto de emergencia</p>
+                        <div>
+                            <label class="text-xs text-gray-500">Usuario de confianza (para desactivar pagos remoto)</label>
+                            <input id="profileEmergencyContact" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none" maxlength="20" placeholder="Ej: novia">
+                        </div>
+                        <div class="mt-2">
+                            <label class="text-xs text-gray-500">Código de desactivación (4-6 dígitos)</label>
+                            <input id="profileDisableCode" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base mt-1.5 outline-none" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="Ej: 1234">
+                        </div>
+                        <div id="emergencyStatus" class="text-xs text-gray-400 mt-1"></div>
+                        <div id="paymentsDisabledBanner" class="hidden mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-medium text-center">🚫 Pagos desactivados de forma remota</div>
+                    </div>
                     <div class="flex gap-2 pt-1">
                         <button onclick="hideProfileModal()" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 hover:border-gray-300 transition">Cancelar</button>
                         <button onclick="saveProfile()" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white text-sm font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] shadow-sm transition">Guardar</button>
@@ -390,6 +403,25 @@
         </div>
     </div>
 
+    <!-- Emergency actions modal -->
+    <div id="emergencyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)hideEmergencyModal()">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="font-bold text-lg">🚨 Acción de emergencia</h3>
+                <button onclick="hideEmergencyModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-5 space-y-4">
+                <p class="text-sm text-gray-600">Vas a <strong id="emergencyActionLabel">desactivar los pagos</strong> de <strong id="emergencyTargetName"></strong>. Ingresá el código de desactivación que te dio esa persona.</p>
+                <input id="emergencyCodeInput" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base outline-none focus:border-[#5a9fbc] text-center text-2xl tracking-[0.5em]" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="······" autocomplete="off">
+                <p id="emergencyError" class="text-red-500 text-xs text-center hidden"></p>
+                <div class="flex gap-2">
+                    <button onclick="doEmergencyDisable()" class="flex-1 py-3 rounded-xl font-bold text-white transition bg-red-600 hover:bg-red-700">🚫 Desactivar</button>
+                    <button onclick="doEmergencyEnable()" class="flex-1 py-3 rounded-xl font-bold text-white transition bg-green-600 hover:bg-green-700">✅ Reactivar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- PIN prompt modal -->
     <div id="paymentPinModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)hidePaymentPinModal()">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden">
@@ -497,6 +529,12 @@
             document.getElementById('profilePin').textContent=myProfileData.pin||localStorage.getItem('decidr_pin')||'---';
             document.getElementById('profilePaymentPin').value='';
             document.getElementById('paymentPinStatus').textContent=myProfileData.has_payment_pin?'✅ PIN configurado':'❌ Sin configurar';
+            document.getElementById('profileEmergencyContact').value=myProfileData.emergency_contact||'';
+            document.getElementById('profileDisableCode').value='';
+            const ec=myProfileData.emergency_contact;
+            document.getElementById('emergencyStatus').textContent=ec?'✅ Contacto: @'+ec:'❌ Sin configurar';
+            const pb=document.getElementById('paymentsDisabledBanner');
+            if(myProfileData.payments_disabled){pb.classList.remove('hidden');}else{pb.classList.add('hidden');}
             updateAvatarUI();
             updateProfileCounts();
             document.getElementById('profileModal').classList.remove('hidden');
@@ -521,6 +559,8 @@
         async function saveProfile(){
             const name=document.getElementById('profileName').value.trim(),bio=document.getElementById('profileBio').value.trim(),phone=document.getElementById('profilePhone').value.trim()||null;
             const pin=document.getElementById('profilePaymentPin').value.trim();
+            const ec=document.getElementById('profileEmergencyContact').value.trim();
+            const dc=document.getElementById('profileDisableCode').value.trim();
             try{
                 if(pin){
                     if(!/^\d{4,6}$/.test(pin)){document.getElementById('profileError').textContent='PIN: 4 a 6 dígitos numéricos';document.getElementById('profileError').classList.remove('hidden');return;}
@@ -531,6 +571,16 @@
                     if(!pr.ok){document.getElementById('profileError').textContent=pd.error||'Error al configurar PIN';document.getElementById('profileError').classList.remove('hidden');return;}
                     myProfileData.has_payment_pin=true;
                     document.getElementById('paymentPinStatus').textContent='✅ PIN configurado';
+                }
+                if(ec||dc){
+                    if(dc&&!/^\d{4,6}$/.test(dc)){document.getElementById('profileError').textContent='Código: 4 a 6 dígitos';document.getElementById('profileError').classList.remove('hidden');return;}
+                    const pw2=prompt('Ingresá tu contraseña actual para guardar contacto de emergencia:');
+                    if(!pw2){document.getElementById('profileError').textContent='Contraseña requerida';document.getElementById('profileError').classList.remove('hidden');return;}
+                    const er=await fetch('/profile/emergency',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({emergency_contact:ec,remote_disable_code:dc,current_password:pw2})});
+                    const ed=await er.json();
+                    if(!er.ok){document.getElementById('profileError').textContent=ed.error||'Error al guardar contacto';document.getElementById('profileError').classList.remove('hidden');return;}
+                    myProfileData.emergency_contact=ec;
+                    document.getElementById('emergencyStatus').textContent=ec?'✅ Contacto: @'+ec:'❌ Sin configurar';
                 }
                 const r=await fetch('/profile',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({display_name:name||myUsername,bio:bio||'',phone:phone})});const d=await r.json();if(r.ok){myProfileData.display_name=d.display_name;myProfileData.bio=d.bio;myProfileData.phone=phone;updateAvatarUI();hideProfileModal();}else{document.getElementById('profileError').textContent=d.error;document.getElementById('profileError').classList.remove('hidden');}}catch(e){document.getElementById('profileError').textContent='Error';document.getElementById('profileError').classList.remove('hidden');}
         }
@@ -572,7 +622,7 @@
         })();
 
         async function fetchProfile(){
-            try{const r=await fetch(`/profile/${myUsername}`,{headers:{'Authorization':'Bearer '+token}});if(r.status===401){invalidToken();return;}const d=await r.json();if(r.ok){myProfileData={display_name:d.display_name||myUsername,bio:d.bio||'',avatar:d.avatar,pin:d.pin,phone:d.phone,has_payment_pin:d.has_payment_pin||false};if(d.pin)localStorage.setItem('decidr_pin',d.pin);document.getElementById('myUsername').textContent=d.display_name||myUsername;updateAvatarUI();}}catch(e){}
+            try{const r=await fetch(`/profile/${myUsername}`,{headers:{'Authorization':'Bearer '+token}});if(r.status===401){invalidToken();return;}const d=await r.json();if(r.ok){myProfileData={display_name:d.display_name||myUsername,bio:d.bio||'',avatar:d.avatar,pin:d.pin,phone:d.phone,has_payment_pin:d.has_payment_pin||false,emergency_contact:d.emergency_contact||'',payments_disabled:d.payments_disabled||false};if(d.pin)localStorage.setItem('decidr_pin',d.pin);document.getElementById('myUsername').textContent=d.display_name||myUsername;updateAvatarUI();}}catch(e){}
         }
 
         // ─── Rooms ───
@@ -590,7 +640,7 @@
             if(!q||q.length<1){el.classList.add('hidden');el.innerHTML='';return;}
             clearTimeout(searchTimeout);
             searchTimeout=setTimeout(async ()=>{
-                try{const r=await fetch('/users/search?q='+encodeURIComponent(q),{headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(d.users&&d.users.length){el.innerHTML=d.users.map(u=>`<div class="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer transition" onclick="startDM('${u.username}')"><div><div class="text-sm font-medium text-gray-800">${escapeHtml(u.display_name||u.username)}</div><div class="text-[10px] text-gray-400">@${u.username} ${u.pin?'· PIN: '+u.pin:''}</div></div><button class="text-xs bg-[#5a9fbc] text-white px-3 py-1 rounded-lg hover:bg-[#4a87a0] transition">Agregar</button></div>`).join('');el.classList.remove('hidden');}else{el.innerHTML='<div class="px-3 py-3 text-xs text-gray-400 text-center">Sin resultados</div>';el.classList.remove('hidden');}}catch(e){el.classList.add('hidden');}
+                try{const r=await fetch('/users/search?q='+encodeURIComponent(q),{headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(d.users&&d.users.length){el.innerHTML=d.users.map(u=>{let extra='';if(u.is_emergency_contact)extra=`<button onclick="showEmergencyActions('${u.username}')" class="text-xs bg-red-500 text-white px-2 py-1 rounded-lg hover:bg-red-600 transition" title="Desactivar pagos de @${u.username}">🚨</button>`;return `<div class="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer transition" onclick="startDM('${u.username}')"><div><div class="text-sm font-medium text-gray-800">${escapeHtml(u.display_name||u.username)}</div><div class="text-[10px] text-gray-400">@${u.username} ${u.pin?'· PIN: '+u.pin:''}</div></div><div class="flex gap-1">${extra}<button class="text-xs bg-[#5a9fbc] text-white px-3 py-1 rounded-lg hover:bg-[#4a87a0] transition">Agregar</button></div></div>`;}).join('');el.classList.remove('hidden');}else{el.innerHTML='<div class="px-3 py-3 text-xs text-gray-400 text-center">Sin resultados</div>';el.classList.remove('hidden');}}catch(e){el.classList.add('hidden');}
             },300);
         }
         async function startDM(username){
@@ -724,6 +774,26 @@
         }
         function doReassign(){const t=document.getElementById('reassignTarget').value.trim();if(!t)return;ws.send(JSON.stringify({type:"game_action",game:"palabras",action:"reassign",target:t,room:currentRoom}));document.getElementById('reassignTarget').value="";document.getElementById('reassignRow').classList.add('hidden');}
         document.getElementById('paymentPinInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')confirmPaymentPin();});
+        document.getElementById('emergencyCodeInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')doEmergencyDisable();});
+
+        // ─── Emergency remote disable ───
+        let emergencyTarget='';
+        function showEmergencyActions(username){emergencyTarget=username;document.getElementById('emergencyTargetName').textContent='@'+username;document.getElementById('emergencyCodeInput').value='';document.getElementById('emergencyError').classList.add('hidden');document.getElementById('emergencyModal').classList.remove('hidden');document.getElementById('emergencyCodeInput').focus();}
+        function hideEmergencyModal(){document.getElementById('emergencyModal').classList.add('hidden');emergencyTarget='';}
+        async function doEmergencyDisable(){await doEmergencyAction(false);}
+        async function doEmergencyEnable(){await doEmergencyAction(true);}
+        async function doEmergencyAction(enable){
+            const code=document.getElementById('emergencyCodeInput').value.trim();
+            if(!code){document.getElementById('emergencyError').textContent='Ingresá el código de desactivación';document.getElementById('emergencyError').classList.remove('hidden');return;}
+            document.getElementById('emergencyError').classList.add('hidden');
+            try{
+                const r=await fetch('/payments/'+(enable?'remote-enable':'remote-disable'),{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({target_username:emergencyTarget,code})});
+                const d=await r.json();
+                if(!r.ok){document.getElementById('emergencyError').textContent=d.error||'Error';document.getElementById('emergencyError').classList.remove('hidden');return;}
+                alert('✅ '+d.message);
+                hideEmergencyModal();
+            }catch(e){document.getElementById('emergencyError').textContent='Error de conexión';document.getElementById('emergencyError').classList.remove('hidden');}
+        }
 
         // ─── Sidebar ───
         function toggleSidebar(){const sb=document.getElementById('sidebar'),ov=document.getElementById('sidebarOverlay'),o=sb.classList.toggle('open');ov.classList.toggle('hidden',!o);}

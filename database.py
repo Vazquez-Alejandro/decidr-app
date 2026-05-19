@@ -23,6 +23,9 @@ class UserDB(Base):
     phone = Column(String, nullable=True)
     mp_access_token = Column(String, nullable=True)
     payment_pin_hash = Column(String, nullable=True)
+    emergency_contact = Column(String, nullable=True)
+    remote_disable_code_hash = Column(String, nullable=True)
+    payments_disabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
