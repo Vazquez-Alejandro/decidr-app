@@ -624,8 +624,21 @@
             if(box){box.classList.add('closing');setTimeout(()=>{document.getElementById('settingsModal').classList.add('hidden');box.classList.remove('closing');},150);}
             else document.getElementById('settingsModal').classList.add('hidden');
         }
-        function saveThemeChanges(){saveTheme();hideSettingsModal();}
+        function saveThemeChanges(){
+            saveTheme();
+            hideSettingsModal();
+            // Show brief confirmation toast
+            showToast('✅ Cambios guardados');
+        }
         function cancelThemeChanges(){loadTheme();hideSettingsModal();}
+        
+        function showToast(msg){
+            const t=document.createElement('div');
+            t.className='fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-xl shadow-lg animate-bounce';
+            t.textContent=msg;
+            document.body.appendChild(t);
+            setTimeout(()=>{t.remove();},2000);
+        }
 
         // ─── Auth ───
         function switchAuthTab(m){authMode=m;document.getElementById('tabLogin').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='login'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('tabRegister').className='flex-1 text-center py-2 text-sm font-medium rounded-lg transition-all cursor-pointer '+(m==='register'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700');document.getElementById('authBtn').textContent=m==='login'?'Iniciar sesión':'Crear cuenta';document.getElementById('authBtn').onclick=m==='login'?doLogin:doRegister;document.getElementById('authToggleText').textContent=m==='login'?'¿No tenés cuenta?':'¿Ya tenés cuenta?';document.getElementById('authToggleLink').textContent=m==='login'?'Crear una':'Iniciar sesión';document.getElementById('authToggleLink').onclick=function(e){e.preventDefault();switchAuthTab(m==='login'?'register':'login');};document.getElementById('loginPhone').classList.toggle('hidden',m!=='register');document.getElementById('loginError').classList.add('hidden');}
@@ -703,7 +716,7 @@
         }
         async function handleMessage(d){if(d.type==="user_list"){connectedUsers=d.users;updatePeerKeys();updateOnlineUsers();requestRoomKey();}else if(d.type==="incoming_call")showIncomingCall(d);else if(d.type==="call_ringing")document.getElementById('callStatus').textContent='Llamando...';else if(d.type==="call_accepted")startWebRTC();else if(d.type==="call_rejected"){alert('Rechazada');resetCallUI();}else if(d.type==="call_ended"){alert('Finalizada');cleanupCall();}else if(d.type==="call_error"){alert(d.content);resetCallUI();}else if(d.type==="offer")handleOffer(d);else if(d.type==="answer")handleAnswer(d);else if(d.type==="ice_candidate")handleIceCandidate(d);else if(d.type==="room_key_share")handleRoomKeyShare(d);else if(d.type==="new_dm"){await fetchRooms();switchRoom(d.room_id,d.from,null);}else appendMessage(d);}
 
-        function updatePeerKeys(){console.log('updatePeerKeys: connectedUsers',connectedUsers.length);connectedUsers.forEach(u=>{if(u.key&&u.id!==clientId){try{Crypto.peerKeys[u.id]=nacl.util.decodeBase64(u.key);console.log('updatePeerKeys: added',u.id);}catch(e){console.log('updatePeerKeys: failed for',u.id,e);}}});}
+        function updatePeerKeys(){console.log('updatePeerKeys: connectedUsers',connectedUsers.length);connectedUsers.forEach(u=>{if(u.key&&u.id!==clientId){try{Crypto.peerKeys[u.id]=nacl.util.decodeBase64(u.key);console.log('updatePeerKeys: added',u.id);}catch(e){console.log('updatePeerKeys: failed for',u.id,e);}}});if(hasRoomKey&&Object.keys(Crypto.peerKeys).length>0){console.log('updatePeerKeys: auto-sharing key with peers');shareRoomKeyWithPeers();}}
         function requestRoomKey(){console.log('requestRoomKey: hasRoomKey',hasRoomKey,'roomKeyRequested',roomKeyRequested,'hasLocalKey',!!Crypto.getRoomKey(currentRoom));if(hasRoomKey||roomKeyRequested)return;if(Crypto.getRoomKey(currentRoom)){hasRoomKey=true;return;}roomKeyRequested=true;            setTimeout(()=>{console.log('requestRoomKey timer fired: hasRoomKey now',hasRoomKey);if(!hasRoomKey){const key=Crypto.generateRoomKey();Crypto.setRoomKey(currentRoom,key);hasRoomKey=true;console.log('requestRoomKey: generated local key');shareRoomKeyWithPeers();}roomKeyRequested=false;},800);}
         function shareRoomKeyWithPeers(){const key=Crypto.getRoomKey(currentRoom);console.log('shareRoomKeyWithPeers: roomKey?',!!key,'peers:',Object.keys(Crypto.peerKeys).length);if(!key)return;Object.entries(Crypto.peerKeys).forEach(([pid,pk])=>{try{const enc=Crypto.encryptRoomKeyFor(key,pk);console.log('sharing key with peer:',pid);ws.send(JSON.stringify({type:"room_key_share",target:pid,room:currentRoom,encrypted_key:enc.encrypted,nonce:enc.nonce,sender_key:Crypto.getPublicKey()}));}catch(e){console.error('shareRoomKeyWithPeers error for',pid,e);}});}
         function handleRoomKeyShare(d){console.log('handleRoomKeyShare: from',d.from,'room',d.room,'currentRoom',currentRoom);const dec=Crypto.decryptRoomKey(d.encrypted_key,d.nonce,d.sender_key);console.log('handleRoomKeyShare: decryption',dec?'success':'FAILED');if(!dec)return;const existing=Crypto.getRoomKey(currentRoom);if(existing){const cur=nacl.util.encodeBase64(existing);const newB=nacl.util.encodeBase64(dec);console.log('compare keys: cur',cur.slice(0,8)+'...','new',newB.slice(0,8)+'...','keep existing?',newB>=cur);if(newB!==cur){const pk=Crypto.peerKeys[d.from];if(pk){try{const enc=Crypto.encryptRoomKeyFor(existing,pk);ws.send(JSON.stringify({type:"room_key_share",target:d.from,room:currentRoom,encrypted_key:enc.encrypted,nonce:enc.nonce,sender_key:Crypto.getPublicKey()}));console.log('shared existing key back to',d.from);}catch(e){}}}if(newB>=cur)return;}Crypto.setRoomKey(currentRoom,dec);const wasNew=!hasRoomKey;hasRoomKey=true;console.log('handleRoomKeyShare: key stored, wasNew?',wasNew);if(wasNew)appendMessage({type:"system",content:"🔑 Clave E2EE recibida"});shareRoomKeyWithPeers();}
@@ -716,7 +729,10 @@
                 div.innerHTML=`<span class="w-2 h-2 rounded-full bg-green-500 shrink-0 ring-2 ring-green-200"></span><span class="flex-1 truncate font-medium text-gray-700">${escapeHtml(u.name)}</span><div class="flex gap-0.5"><button onclick="startCall('${u.id}','${escapeHtml(u.name)}',false)" class="w-6 h-6 rounded-lg bg-gray-100 hover:bg-green-100 hover:text-green-600 flex items-center justify-center text-[10px] transition" title="Voz">📞</button><button onclick="startCall('${u.id}','${escapeHtml(u.name)}',true)" class="w-6 h-6 rounded-lg bg-gray-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center text-[10px] transition" title="Video">📹</button><button onclick="blockUser('${u.id}')" class="w-6 h-6 rounded-lg bg-gray-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center text-[10px] transition" title="Bloquear">🚫</button></div>`;
                 c.appendChild(div);
             });
-            if(hasRoomKey&&Object.keys(Crypto.peerKeys).length>0)shareRoomKeyWithPeers();
+            if(hasRoomKey&&Object.keys(Crypto.peerKeys).length>0){
+                console.log('updateOnlineUsers: re-sharing key with',Object.keys(Crypto.peerKeys).length,'peers');
+                shareRoomKeyWithPeers();
+            }
         }
         function refreshOnlineUsers(){if(ws)ws.send(JSON.stringify({type:"get_users"}));}
 
