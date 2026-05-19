@@ -506,8 +506,8 @@
         };
 
         // ─── Theme ───
-        function loadTheme(user){const k='decidr_theme_'+(user||'default');try{const t=JSON.parse(localStorage.getItem(k));if(t){const s=document.documentElement.style;s.setProperty('--chat-bg',t.bg||'#f0f5f9');s.setProperty('--chat-bg-image',t.bgImage||'none');s.setProperty('--bubble-out-bg',t.bubbleColor||'#d0e6f0');s.setProperty('--font-size',(t.fontSize||14)+'px');s.setProperty('--font-family',t.fontFamily||'system-ui, -apple-system, sans-serif');}}catch(e){}}
-        function saveTheme(){const k='decidr_theme_'+(myUsername||'default');const s=document.documentElement.style;const g=(p,d)=>s.getPropertyValue(p).trim()||d;const t={bg:g('--chat-bg','#f0f5f9'),bgImage:g('--chat-bg-image','none'),bubbleColor:g('--bubble-out-bg','#d0e6f0'),fontSize:parseInt(g('--font-size','14')),fontFamily:g('--font-family','system-ui, -apple-system, sans-serif')};localStorage.setItem(k,JSON.stringify(t));}
+        function loadTheme(user){const k='decidr_theme_'+(user||'default');try{const t=JSON.parse(localStorage.getItem(k));if(t){const s=document.documentElement.style;s.setProperty('--chat-bg',t.bg||'#f0f5f9');s.setProperty('--chat-bg-image',t.bgImage||'none');s.setProperty('--bubble-out-bg',t.bubbleColor||'#d0e6f0');s.setProperty('--font-size',(t.fontSize||14)+'px');s.setProperty('--font-family',t.fontFamily||'system-ui, -apple-system, sans-serif');console.log('loadTheme: loaded',k,t);}else console.log('loadTheme: no saved theme for',k);}catch(e){console.log('loadTheme: error for',k,e);}}
+        function saveTheme(){const k='decidr_theme_'+(myUsername||'default');const s=document.documentElement.style;const g=(p,d)=>s.getPropertyValue(p).trim()||d;const t={bg:g('--chat-bg','#f0f5f9'),bgImage:g('--chat-bg-image','none'),bubbleColor:g('--bubble-out-bg','#d0e6f0'),fontSize:parseInt(g('--font-size','14')),fontFamily:g('--font-family','system-ui, -apple-system, sans-serif')};localStorage.setItem(k,JSON.stringify(t));console.log('saveTheme: saved to',k,t);}
         loadTheme();
 
         function selectWallpaper(el){
@@ -809,6 +809,7 @@
             else {
                 const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result";
                 if(isMsg && d.room && d.room!==currentRoom && d.client_id!==clientId){
+                    console.log('notify: unread for room',d.room,'from',d.client_id,'myId',clientId);
                     unreadCounts[d.room]=(unreadCounts[d.room]||0)+1;
                     renderRooms();
                     updatePageTitle();
@@ -839,6 +840,7 @@
         function refreshOnlineUsers(){if(ws)ws.send(JSON.stringify({type:"get_users"}));}
 
         function appendMessage(d){
+            if(d.room&&d.room!==currentRoom)return;
             const div=document.createElement('div');
             const t = new Date();
             const ts = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
