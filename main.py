@@ -273,6 +273,29 @@ async def join_room(room_id: int, req: Request):
         db.close()
 
 
+@app.delete("/rooms/{room_id}")
+async def delete_room(room_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        room = db.query(RoomDB).filter(RoomDB.id == room_id).first()
+        if not room:
+            return JSONResponse({"error": "Sala no encontrada"}, status_code=404)
+        # Remove all members
+        db.query(RoomMemberDB).filter(RoomMemberDB.room_id == room_id).delete()
+        # Remove all messages
+        db.query(MessageDB).filter(MessageDB.chat_id == room_id).delete()
+        # Remove the room
+        db.delete(room)
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
 # ─── Room key storage for E2EE ────────────────────────────────────
 @app.post("/rooms/{room_id}/key")
 async def store_room_key(room_id: int, req: Request):
@@ -837,6 +860,7 @@ class ConnectionManager:
                     "nonce": msg.nonce,
                     "sender": msg.sender_name,
                     "target": msg.target_username,
+                    "room": msg.room,
                     "scheduled_id": msg.id
                 })
                 msg.sent = True
@@ -875,6 +899,7 @@ async def scheduled_message_checker():
                     "nonce": msg.nonce,
                     "sender": msg.sender_name,
                     "target": msg.target_username or "Todos",
+                    "room": msg.room,
                     "scheduled_id": msg.id
                 })
                 msg.sent = True
@@ -1053,6 +1078,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 target = data.get("target", "").strip() or None
                 dt_str = data.get("datetime", "")
                 nonce = data.get("nonce")
+                room = data.get("room", current_room)
                 if not content or not dt_str:
                     continue
                 try:
@@ -1066,7 +1092,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     sender_client_id=client_id,
                     sender_name=sender_name,
                     target_username=target,
-                    room=chat_id,
+                    room=room,
                     scheduled_at=scheduled_at
                 )
                 db.add(db_msg)
