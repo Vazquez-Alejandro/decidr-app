@@ -108,6 +108,8 @@ class FileDB(Base):
     stored_path = Column(String, nullable=False)
     uploader_id = Column(Integer, ForeignKey("users.id"))
     room_id = Column(Integer, nullable=True)
+    view_once = Column(Boolean, default=False)
+    viewed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     uploader = relationship("UserDB")
 

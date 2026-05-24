@@ -821,6 +821,7 @@ async def upload_file(req: Request):
     original_name = body.get("name", "file")
     file_size = body.get("size", 0)
     room_id = body.get("room_id")
+    view_once = body.get("view_once", False)
     if not encrypted_data:
         return JSONResponse({"error": "Faltan datos"}, status_code=400)
     if file_size > MAX_FILE_SIZE:
@@ -842,7 +843,8 @@ async def upload_file(req: Request):
             file_size=file_size,
             stored_path=str(fpath),
             uploader_id=user["id"],
-            room_id=room_id
+            room_id=room_id,
+            view_once=view_once
         )
         db.add(file_rec)
         db.commit()
@@ -863,6 +865,8 @@ async def get_file(file_id: int, req: Request):
         f = db.query(FileDB).filter(FileDB.id == file_id).first()
         if not f:
             return JSONResponse({"error": "Archivo no encontrado"}, status_code=404)
+        if f.view_once and f.viewed:
+            return JSONResponse({"error": "Esta imagen ya fue vista"}, status_code=410)
         # Verify room membership if room_id is set
         if f.room_id:
             member = db.query(RoomMemberDB).filter(
@@ -882,6 +886,31 @@ async def get_file(file_id: int, req: Request):
                 "Content-Disposition": f'attachment; filename="{f.original_name}"',
             }
         )
+    finally:
+        db.close()
+
+
+@app.post("/files/{file_id}/mark-viewed")
+async def mark_file_viewed(file_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        f = db.query(FileDB).filter(FileDB.id == file_id).first()
+        if not f:
+            return JSONResponse({"error": "Archivo no encontrado"}, status_code=404)
+        # Don't count the uploader's own view
+        if f.uploader_id == user["id"]:
+            return {"ok": True, "self": True}
+        f.viewed = True
+        # Delete the file data from disk
+        p = Path(f.stored_path)
+        if p.exists():
+            p.unlink()
+        db.commit()
+        return {"ok": True}
     finally:
         db.close()
 
