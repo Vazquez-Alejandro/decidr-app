@@ -981,6 +981,21 @@ async def vapid_public_key(req: Request):
     return {"public_key": VAPID_PUBLIC_KEY}
 
 
+# ─── ICE / TURN config for WebRTC ─────────────────────────────────
+@app.get("/ice-config")
+async def ice_config(req: Request):
+    return {
+        "iceServers": [
+            {"urls": "stun:stun.l.google.com:19302"},
+            {
+                "urls": "turn:192.168.0.130:3478",
+                "username": "decidr",
+                "credential": "decidrTurn2026"
+            }
+        ]
+    }
+
+
 @app.get("/profile/blocked/list")
 async def get_blocked(req: Request):
     token = req.headers.get("authorization", "").replace("Bearer ", "")

@@ -1115,7 +1115,8 @@
 
         // ─── Calls ───
         let pc=null,localStream=null,callTarget=null,callState='idle',callMuted=false,callHasVideo=false;
-        const ICE_CONFIG={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+        let ICE_CONFIG={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+        (async function(){try{const r=await fetch('/ice-config',{headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(d.iceServers)ICE_CONFIG=d;}catch(e){}})();
         function createPC(){pc=new RTCPeerConnection(ICE_CONFIG);if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.onicecandidate=e=>{if(e.candidate)ws.send(JSON.stringify({type:'ice_candidate',target:callTarget,candidate:e.candidate}));};pc.ontrack=e=>{if(callHasVideo&&e.track.kind==='video'){const r=document.getElementById('remoteVideo');if(r.srcObject!==e.streams[0])r.srcObject=e.streams[0];}else{document.getElementById('remoteAudio').srcObject=e.streams[0];}};}
         function showVideoContainer(){document.getElementById('chat').classList.add('hidden');document.getElementById('videoContainer').classList.remove('hidden');document.getElementById('toggleVideoBtn').classList.remove('hidden');document.getElementById('toggleVideoBtn').textContent='📹';const l=document.getElementById('localVideo');if(localStream)l.srcObject=localStream;}
         function hideVideoContainer(){document.getElementById('videoContainer').classList.add('hidden');document.getElementById('remoteVideo').srcObject=null;document.getElementById('localVideo').srcObject=null;document.getElementById('toggleVideoBtn').classList.add('hidden');document.getElementById('chat').classList.remove('hidden');}

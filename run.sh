@@ -22,7 +22,13 @@ fi
 
 pip install -q -r "$(dirname "$0")/requirements.txt"
 
+SCRIPT_DIR="$(dirname "$0")"
+
+# Start TURN server for WebRTC
+"$SCRIPT_DIR/turn.sh" start
+
 echo "🚀 Servidor corriendo en https://localhost:8000"
+trap "trap - SIGTERM && kill -- -$$ 2>/dev/null; $SCRIPT_DIR/turn.sh stop" SIGINT SIGTERM EXIT
 uvicorn main:app --host 0.0.0.0 --port 8000 \
     --ssl-keyfile "$KEY" --ssl-certfile "$CERT" \
     --reload
