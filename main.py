@@ -1101,6 +1101,50 @@ async def get_blocked(req: Request):
         db.close()
 
 
+@app.get("/privacy/settings")
+async def get_privacy_settings(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        return {
+            "read_receipts": u.read_receipts if u.read_receipts is not None else True,
+            "online_status": u.online_status or 'all',
+            "last_seen_visibility": u.last_seen_visibility or 'all',
+        }
+    finally:
+        db.close()
+
+
+@app.put("/privacy/settings")
+async def update_privacy_settings(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        if "read_receipts" in body:
+            u.read_receipts = bool(body["read_receipts"])
+        if "online_status" in body and body["online_status"] in ("all", "contacts", "none"):
+            u.online_status = body["online_status"]
+        if "last_seen_visibility" in body and body["last_seen_visibility"] in ("all", "contacts", "none"):
+            u.last_seen_visibility = body["last_seen_visibility"]
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
 PALABRAS_POOL = [
     "Cerveza", "Hielo", "Carbon", "Carne", "Ensalada", "Pan",
     "Salsa", "Vaso", "Plato", "Servilleta", "Pizza", "Helado",
@@ -1125,10 +1169,19 @@ class ConnectionManager:
         self.user_data[client_id] = {"token": token_payload}
         await self.deliver_pending(client_id)
         await broadcast_user_list()
-        await self.broadcast({
-            "type": "system",
-            "content": f"🟢 {client_id} se conectó"
-        })
+        # Notify others that this user is online
+        db2 = SessionLocal()
+        try:
+            user_db = db2.query(UserDB).filter(UserDB.username == client_id).first()
+            await self.broadcast({
+                "type": "user_online",
+                "username": client_id,
+                "read_receipts": user_db.read_receipts if user_db else True,
+                "online_status": user_db.online_status if user_db else 'all',
+                "last_seen_visibility": user_db.last_seen_visibility if user_db else 'all',
+            })
+        finally:
+            db2.close()
 
     def disconnect(self, client_id: str, websocket: WebSocket = None):
         current = self.active_connections.get(client_id)
@@ -1139,7 +1192,7 @@ class ConnectionManager:
         self.user_data.pop(client_id, None)
 
     async def broadcast(self, message_dict: dict, exclude: str = None):
-        for cid, conn in self.active_connections.items():
+        for cid, conn in list(self.active_connections.items()):
             if cid != exclude:
                 try:
                     await conn.send_json(message_dict)
@@ -1185,12 +1238,24 @@ manager = ConnectionManager()
 
 # ─── Usuarios activos ─────────────────────────────────────────────
 async def broadcast_user_list():
-    users = [{
-        "id": cid,
-        "name": name,
-        "key": manager.user_data.get(cid, {}).get("public_key")
-    } for cid, name in manager.user_names.items()]
-    await manager.broadcast({"type": "user_list", "users": users})
+    db = SessionLocal()
+    try:
+        users = []
+        for cid, name in manager.user_names.items():
+            user = db.query(UserDB).filter(UserDB.username == cid).first()
+            users.append({
+                "id": cid,
+                "name": name,
+                "key": manager.user_data.get(cid, {}).get("public_key"),
+                "online": True,
+                "last_seen": None,
+                "read_receipts": user.read_receipts if user else True,
+                "online_status": user.online_status if user else 'all',
+                "last_seen_visibility": user.last_seen_visibility if user else 'all',
+            })
+        await manager.broadcast({"type": "user_list", "users": users})
+    finally:
+        db.close()
 
 
 # ─── Programación de mensajes ─────────────────────────────────────
@@ -1303,7 +1368,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "room": room,
                         "msg_id": msg_id,
                         "message_id": db_msg_id,
-                        "reply_to": reply_to
+                        "reply_to": reply_to,
+                        "status": "sent"
                     }
                     for cid, conn in manager.active_connections.items():
                         try:
@@ -1430,6 +1496,55 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     except Exception:
                         pass
 
+            elif msg_type == "delivered":
+                target = data.get("target")
+                msg_id = data.get("message_id")
+                if target and msg_id:
+                    await manager.send_to(target, {
+                        "type": "status_update",
+                        "message_id": msg_id,
+                        "status": "delivered",
+                        "from": client_id
+                    })
+
+            elif msg_type == "read":
+                target = data.get("target")
+                msg_id = data.get("message_id")
+                if target and msg_id:
+                    # Update DB status
+                    try:
+                        db.query(MessageDB).filter(MessageDB.id == msg_id).update({
+                            "status": "read",
+                            "read_at": datetime.datetime.utcnow()
+                        })
+                        db.commit()
+                    except Exception:
+                        pass
+                    await manager.send_to(target, {
+                        "type": "status_update",
+                        "message_id": msg_id,
+                        "status": "read",
+                        "from": client_id
+                    })
+
+            elif msg_type == "get_user_status":
+                target = data.get("target", "")
+                if target:
+                    user = db.query(UserDB).filter(UserDB.username == target).first()
+                    if user:
+                        online = target in manager.active_connections
+                        can_see_online = user.online_status in ('all', 'contacts')
+                        can_see_last_seen = user.last_seen_visibility in ('all', 'contacts')
+                        reply = {
+                            "type": "user_status",
+                            "username": target,
+                        }
+                        if can_see_online:
+                            reply["online"] = online
+                        if can_see_last_seen and user.last_seen:
+                            reply["last_seen"] = user.last_seen.isoformat()
+                        await manager.send_to(client_id, reply)
+
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")
                 manager.client_rooms[client_id] = room
@@ -1450,13 +1565,22 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     await broadcast_user_list()
 
             elif msg_type == "get_users":
-                await manager.send_to(client_id, {
-                    "type": "user_list",
-                    "users": [{
+                ulist = []
+                for cid, name in manager.user_names.items():
+                    user = db.query(UserDB).filter(UserDB.username == cid).first()
+                    ulist.append({
                         "id": cid,
                         "name": name,
-                        "key": manager.user_data.get(cid, {}).get("public_key")
-                    } for cid, name in manager.user_names.items()]
+                        "key": manager.user_data.get(cid, {}).get("public_key"),
+                        "online": True,
+                        "last_seen": None,
+                        "read_receipts": user.read_receipts if user else True,
+                        "online_status": user.online_status if user else 'all',
+                        "last_seen_visibility": user.last_seen_visibility if user else 'all',
+                    })
+                await manager.send_to(client_id, {
+                    "type": "user_list",
+                    "users": ulist
                 })
 
             elif msg_type == "public_key":
@@ -1717,10 +1841,19 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(client_id, websocket)
+        now_str = datetime.datetime.utcnow().isoformat()
+        try:
+            db2 = SessionLocal()
+            db2.query(UserDB).filter(UserDB.username == client_id).update({"last_seen": datetime.datetime.utcnow()})
+            db2.commit()
+            db2.close()
+        except Exception:
+            pass
         await broadcast_user_list()
         await manager.broadcast({
-            "type": "system",
-            "content": f"🔴 {client_id} se desconectó"
+            "type": "user_offline",
+            "username": client_id,
+            "last_seen": now_str
         })
     finally:
         db.close()

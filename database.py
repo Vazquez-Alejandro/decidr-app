@@ -30,6 +30,10 @@ class UserDB(Base):
     emergency_contact = Column(String, nullable=True)
     remote_disable_code_hash = Column(String, nullable=True)
     payments_disabled = Column(Boolean, default=False)
+    last_seen = Column(DateTime, nullable=True)
+    read_receipts = Column(Boolean, default=True)
+    online_status = Column(String, default='all')
+    last_seen_visibility = Column(String, default='all')
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -61,6 +65,8 @@ class MessageDB(Base):
     edited = Column(Boolean, default=False)
     deleted = Column(Boolean, default=False)
     reply_to = Column(Text, nullable=True)
+    status = Column(String, default='sent')
+    read_at = Column(DateTime, nullable=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     sender = relationship("UserDB")
     chat = relationship("ChatDB")
