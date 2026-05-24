@@ -24,6 +24,23 @@ from pywebpush import webpush, WebPushException
 
 Base.metadata.create_all(bind=engine)
 
+# ─── JWT ────────────────────────────────────────────────────────────
+_SECRET_FILE = Path(__file__).parent / ".jwt_secret"
+JWT_SECRET = os.environ.get("JWT_SECRET") or (
+    _SECRET_FILE.read_text().strip() if _SECRET_FILE.exists() else ""
+)
+if not JWT_SECRET:
+    JWT_SECRET = secrets.token_hex(64)
+    _SECRET_FILE.write_text(JWT_SECRET)
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY = int(os.environ.get("JWT_EXPIRY", 24 * 3600))
+
+# ─── Mercado Pago ─────────────────────────────────────────────────
+_MP_TOKEN_FILE = Path(__file__).parent / ".mp_token"
+MP_ACCESS_TOKEN = os.environ.get("MP_ACCESS_TOKEN") or (
+    _MP_TOKEN_FILE.read_text().strip() if _MP_TOKEN_FILE.exists() else ""
+)
+
 # ─── VAPID keys for push notifications ────────────────────────────
 _VAPID_FILE = Path(__file__).parent / ".vapid_keys"
 if _VAPID_FILE.exists():
@@ -51,20 +68,6 @@ else:
     _VAPID_FILE.write_text(VAPID_PRIVATE_KEY)
     (Path(__file__).parent / ".vapid_public").write_text(VAPID_PUBLIC_KEY)
 VAPID_CLAIMS = {"sub": "mailto:decidr@app.local"}
-
-# ─── JWT ────────────────────────────────────────────────────────────
-_SECRET_FILE = Path(__file__).parent / ".jwt_secret"
-if _SECRET_FILE.exists():
-    JWT_SECRET = _SECRET_FILE.read_text().strip()
-else:
-    JWT_SECRET = secrets.token_hex(64)
-    _SECRET_FILE.write_text(JWT_SECRET)
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRY = 24 * 3600
-
-# ─── Mercado Pago ─────────────────────────────────────────────────
-_MP_TOKEN_FILE = Path(__file__).parent / ".mp_token"
-MP_ACCESS_TOKEN = _MP_TOKEN_FILE.read_text().strip() if _MP_TOKEN_FILE.exists() else ""
 
 
 def create_token(user_id: int, username: str):

@@ -24,6 +24,13 @@ pip install -q -r "$(dirname "$0")/requirements.txt"
 
 SCRIPT_DIR="$(dirname "$0")"
 
+# Load .env file if present
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -o allexport
+    source "$SCRIPT_DIR/.env"
+    set +o allexport
+fi
+
 # Start TURN server for WebRTC
 "$SCRIPT_DIR/turn.sh" start
 

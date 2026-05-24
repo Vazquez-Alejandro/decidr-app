@@ -7,3 +7,4 @@ PyJWT==2.8.0
 python-multipart==0.0.9
 httpx
 pywebpush
+psycopg2-binary
