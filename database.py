@@ -92,4 +92,17 @@ class ScheduledMessageDB(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class FileDB(Base):
+    __tablename__ = "files"
+    id = Column(Integer, primary_key=True, index=True)
+    original_name = Column(String, nullable=False)
+    mime_type = Column(String, nullable=False)
+    file_size = Column(Integer, nullable=False)
+    stored_path = Column(String, nullable=False)
+    uploader_id = Column(Integer, ForeignKey("users.id"))
+    room_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    uploader = relationship("UserDB")
+
+
 Base.metadata.create_all(bind=engine)

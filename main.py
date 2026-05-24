@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -327,6 +327,8 @@ async def store_room_key(room_id: int, req: Request):
 # ─── Profile & Block endpoints ────────────────────────────────────
 AVATAR_DIR = STATIC_DIR / "avatars"
 AVATAR_DIR.mkdir(exist_ok=True)
+UPLOADS_DIR = STATIC_DIR / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
 
 
 @app.put("/profile")
@@ -767,6 +769,87 @@ async def create_dm(username: str, req: Request):
             "from": user["username"]
         })
         return {"id": room.id, "name": target.display_name or target.username, "is_dm": True}
+    finally:
+        db.close()
+
+
+# ─── File upload ────────────────────────────────────────────────────
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
+@app.post("/files/upload")
+async def upload_file(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    encrypted_data = body.get("data", "")
+    mime_type = body.get("mime", "application/octet-stream")
+    original_name = body.get("name", "file")
+    file_size = body.get("size", 0)
+    room_id = body.get("room_id")
+    if not encrypted_data:
+        return JSONResponse({"error": "Faltan datos"}, status_code=400)
+    if file_size > MAX_FILE_SIZE:
+        return JSONResponse({"error": "Archivo muy grande (máx 50 MB)"}, status_code=400)
+    # Decode base64 and store
+    try:
+        raw = __import__("base64").b64decode(encrypted_data)
+    except Exception:
+        return JSONResponse({"error": "Datos inválidos"}, status_code=400)
+    stored_name = f"file_{user['id']}_{int(time.time())}_{secrets.token_hex(4)}.enc"
+    fpath = UPLOADS_DIR / stored_name
+    fpath.write_bytes(raw)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        file_rec = FileDB(
+            original_name=original_name,
+            mime_type=mime_type,
+            file_size=file_size,
+            stored_path=str(fpath),
+            uploader_id=user["id"],
+            room_id=room_id
+        )
+        db.add(file_rec)
+        db.commit()
+        db.refresh(file_rec)
+        return {"ok": True, "file_id": file_rec.id}
+    finally:
+        db.close()
+
+
+@app.get("/files/{file_id}")
+async def get_file(file_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        f = db.query(FileDB).filter(FileDB.id == file_id).first()
+        if not f:
+            return JSONResponse({"error": "Archivo no encontrado"}, status_code=404)
+        # Verify room membership if room_id is set
+        if f.room_id:
+            member = db.query(RoomMemberDB).filter(
+                RoomMemberDB.room_id == f.room_id,
+                RoomMemberDB.user_id == user["id"]
+            ).first()
+            if not member and f.uploader_id != user["id"]:
+                return JSONResponse({"error": "No autorizado"}, status_code=403)
+        return FileResponse(
+            f.stored_path,
+            media_type="application/octet-stream",
+            headers={
+                "X-File-Id": str(f.id),
+                "X-File-Name": f.original_name,
+                "X-File-Mime": f.mime_type,
+                "X-File-Size": str(f.file_size),
+                "Content-Disposition": f'attachment; filename="{f.original_name}"',
+            }
+        )
     finally:
         db.close()
 

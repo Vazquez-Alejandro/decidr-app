@@ -196,6 +196,8 @@
                 <div id="emojiPicker" class="hidden"></div>
             </div>
             <input id="input" type="text" class="flex-1 bg-gray-100 border border-gray-200 rounded-full px-4 py-2.5 outline-none text-base focus:bg-white focus:border-[#5a9fbc] transition" placeholder="Mensaje cifrado...">
+            <button onclick="document.getElementById('fileInput').click()" class="text-gray-500 text-xl px-1 hover:text-gray-700 transition" title="Adjuntar archivo">📎</button>
+            <input id="fileInput" type="file" class="hidden" onchange="handleFileSelect(event)" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,.mp3,.mp4,.mov">
             <button onclick="sendText()" class="bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white w-11 h-11 rounded-full flex items-center justify-center shadow-md hover:shadow-lg active:scale-95 transition shrink-0">➤</button>
             <span class="text-[10px] text-green-600 absolute -top-2.5 right-4 bg-white px-2.5 rounded-t-md border border-gray-200 border-b-0 font-medium">🔒 E2EE</span>
         </footer>
@@ -860,7 +862,7 @@
             const t = new Date();
             const ts = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
             const tsFull = t.toLocaleString();
-            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;if(!isMe)div.innerHTML=`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>${escapeHtml(display)}<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;else div.innerHTML=escapeHtml(display)+`<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';div.style.cursor='pointer';div.onclick=function(e){e.stopPropagation();showMsgInfo(this);};}
+            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;let fileData=null;try{const p=JSON.parse(display);if(p&&p.type==='file')fileData=p;}catch(e){}if(fileData){const icon=fileData.mime&&fileData.mime.startsWith('image/')?'🖼️':'📄';const sizeStr=fileData.size>1048576?(fileData.size/1048576).toFixed(1)+' MB':(fileData.size/1024).toFixed(1)+' KB';div.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+`<div class="flex items-center gap-3"><span class="text-3xl">${icon}</span><div class="min-w-0 flex-1"><div class="font-semibold text-sm truncate">${escapeHtml(fileData.name)}</div><div class="text-[10px] text-gray-400">${sizeStr}</div></div></div><button onclick="showFilePreview(${fileData.file_id},'${fileData.key}','${escapeHtml(fileData.name)}','${fileData.mime}')" class="mt-2 w-full py-1.5 rounded-lg text-xs font-semibold text-white transition" style="background:var(--primary)">${fileData.mime&&fileData.mime.startsWith('image/')?'👁️ Ver imagen':'⬇️ Descargar'}</button><div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';}else{div.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+escapeHtml(display)+`<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';div.style.cursor='pointer';div.onclick=function(e){e.stopPropagation();showMsgInfo(this);};}}
             else if(d.type==="scheduled"){div.className="bubble bubble-scheduled";let display=d.content;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);if(dec!==null)display=dec;else display="🔒 Mensaje cifrado";}div.innerHTML=`<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${d.sender}</div>${escapeHtml(display)}<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;}
             else if(d.type==="system"){div.className="system-msg";div.innerText=d.content;if(d.content.includes("Pozo"))document.getElementById('papelitoInput').classList.remove('hidden');}
             else if(d.type==="game_result"){div.className="game-result";div.innerHTML=d.content.replace(/\n/g,'<br>');if(d.content.includes("✊✋✌️")||d.content.includes("empate")||d.content.includes("gana")){document.getElementById('pptInput').classList.add('hidden');pptChosen=false;}}
@@ -879,6 +881,92 @@
             }catch(e){}document.getElementById('input').value="";
         }
         document.getElementById('input').addEventListener("keypress",e=>{if(e.key==="Enter")sendText();});
+
+        // ─── File sharing ───
+        let fileUploading=false;
+        async function handleFileSelect(e){
+            const file=e.target.files[0];if(!file||fileUploading)return;
+            if(file.size>50*1024*1024)return alert('Archivo muy grande (máx 50 MB)');
+            fileUploading=true;
+            const origName=file.name,mime=file.type||'application/octet-stream',size=file.size;
+            try{
+                const buf=await file.arrayBuffer();
+                const fileKey=nacl.randomBytes(nacl.secretbox.keyLength);
+                const nonce=nacl.randomBytes(nacl.secretbox.nonceLength);
+                const encrypted=nacl.secretbox(new Uint8Array(buf),nonce,fileKey);
+                const payload=nacl.util.encodeBase64(new Uint8Array([...nonce,...encrypted]));
+                // Show uploading indicator
+                const uploadingDiv=document.createElement('div');
+                uploadingDiv.id='uploadingIndicator';
+                uploadingDiv.className='system-msg';
+                uploadingDiv.innerHTML='<span class="inline-block animate-spin">⏳</span> Subiendo archivo...';
+                chat.appendChild(uploadingDiv);chat.scrollTop=chat.scrollHeight;
+
+                const r=await fetch('/files/upload',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({data:payload,mime:mime,name:origName,size:size,room_id:currentRoom==='default_room'?null:parseInt(currentRoom)})});
+                const d=await r.json();
+                document.getElementById('uploadingIndicator')?.remove();
+                if(!r.ok){alert('Error al subir: '+(d.error||'desconocido'));return;}
+                const fileId=d.file_id;
+                const fileKeyB64=nacl.util.encodeBase64(fileKey);
+                // Send file metadata as encrypted message
+                const msg=JSON.stringify({type:'file',file_id:fileId,name:origName,mime:mime,size:size,key:fileKeyB64});
+                const enc=Crypto.encryptMessage(currentRoom,msg);
+                const p={type:"text",room:currentRoom};
+                if(enc){p.content=enc.ciphertext;p.nonce=enc.nonce;}else p.content=msg;
+                if(!ws||ws.readyState!==WebSocket.OPEN)pendingMessages.push(p);
+                else ws.send(JSON.stringify(p));
+                // Show in own chat
+                appendMessage({type:"chat",client_id:clientId,sender:"",content:msg,is_file:true});
+            }catch(err){alert('Error: '+err.message);}
+            finally{fileUploading=false;e.target.value='';}
+        }
+
+        async function downloadFile(fileId,fileKeyB64,fileName){
+            try{
+                const r=await fetch('/files/'+fileId,{headers:{'Authorization':'Bearer '+token}});
+                if(!r.ok){alert('Error al descargar');return;}
+                const buf=await r.arrayBuffer();
+                const key=nacl.util.decodeBase64(fileKeyB64);
+                const data=new Uint8Array(buf);
+                const nonce=data.slice(0,nacl.secretbox.nonceLength);
+                const ciphertext=data.slice(nacl.secretbox.nonceLength);
+                const decrypted=nacl.secretbox.open(ciphertext,nonce,key);
+                if(!decrypted){alert('Error al descifrar');return;}
+                const blob=new Blob([decrypted]);
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a');
+                a.href=url;a.download=fileName;
+                document.body.appendChild(a);a.click();
+                a.remove();URL.revokeObjectURL(url);
+            }catch(err){alert('Error: '+err.message);}
+        }
+
+        function showFilePreview(fileId,fileKeyB64,fileName,mimeType){
+            if(mimeType.startsWith('image/')){
+                (async()=>{
+                    try{
+                        const r=await fetch('/files/'+fileId,{headers:{'Authorization':'Bearer '+token}});
+                        if(!r.ok)return;
+                        const buf=await r.arrayBuffer();
+                        const key=nacl.util.decodeBase64(fileKeyB64);
+                        const data=new Uint8Array(buf);
+                        const nonce=data.slice(0,nacl.secretbox.nonceLength);
+                        const ct=data.slice(nacl.secretbox.nonceLength);
+                        const dec=nacl.secretbox.open(ct,nonce,key);
+                        if(!dec)return;
+                        const blob=new Blob([dec],{type:mimeType});
+                        const url=URL.createObjectURL(blob);
+                        const overlay=document.createElement('div');
+                        overlay.className='fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4';
+                        overlay.onclick=function(e){if(e.target===overlay){overlay.remove();URL.revokeObjectURL(url);}};
+                        overlay.innerHTML=`<div class="relative max-w-[90vw] max-h-[90vh]" onclick="event.stopPropagation()"><img src="${url}" class="max-w-full max-h-[90vh] rounded-xl shadow-2xl object-contain" alt="${escapeHtml(fileName)}"><button onclick="this.closest('.fixed').remove();URL.revokeObjectURL('${url}')" class="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-800 flex items-center justify-center text-lg shadow-lg hover:bg-gray-100 transition">✕</button></div>`;
+                        document.body.appendChild(overlay);
+                    }catch(e){}
+                })();
+            } else {
+                downloadFile(fileId,fileKeyB64,fileName);
+            }
+        }
 
         // ─── Schedule ───
         function toggleScheduleModal(){const m=document.getElementById('scheduleModal');m.classList.toggle('hidden');if(!m.classList.contains('hidden')){const s=document.getElementById('scheduleTarget');s.innerHTML='<option value="">Todos</option>';connectedUsers.forEach(u=>{if(u.name!==myUsername)s.innerHTML+=`<option value="${u.name}">${u.name}</option>`;});const n=new Date();n.setMinutes(n.getMinutes()-n.getTimezoneOffset());document.getElementById('scheduleDatetime').min=n.toISOString().slice(0,16);}}
