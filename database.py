@@ -133,6 +133,36 @@ class ReactionDB(Base):
     user = relationship("UserDB")
 
 
+class PollDB(Base):
+    __tablename__ = "polls"
+    id = Column(Integer, primary_key=True, index=True)
+    room = Column(String, nullable=False)
+    question = Column(String, nullable=False)
+    creator_id = Column(Integer, ForeignKey("users.id"))
+    multiple = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    creator = relationship("UserDB")
+
+
+class PollOptionDB(Base):
+    __tablename__ = "poll_options"
+    id = Column(Integer, primary_key=True, index=True)
+    poll_id = Column(Integer, ForeignKey("polls.id"))
+    text = Column(String, nullable=False)
+    poll = relationship("PollDB")
+
+
+class PollVoteDB(Base):
+    __tablename__ = "poll_votes"
+    id = Column(Integer, primary_key=True, index=True)
+    poll_id = Column(Integer, ForeignKey("polls.id"))
+    option_id = Column(Integer, ForeignKey("poll_options.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    poll = relationship("PollDB")
+    option = relationship("PollOptionDB")
+    user = relationship("UserDB")
+
+
 class PushSubscriptionDB(Base):
     __tablename__ = "push_subscriptions"
     id = Column(Integer, primary_key=True, index=True)

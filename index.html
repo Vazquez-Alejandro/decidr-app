@@ -69,6 +69,13 @@
         .reaction-badge:hover { background:#e9ecef; }
         .reaction-badge.mine { background:#e8f4f8; border-color:var(--primary); }
         .reaction-badge .r-count { font-size:10px; color:#6c757d; font-weight:600; min-width:8px; text-align:center; }
+        .poll-card { background:#f8fafc; border-radius:14px; padding:12px; border:1px solid #e2e8f0; min-width:220px; max-width:300px; }
+        .poll-card h4 { font-weight:700; font-size:14px; margin-bottom:8px; color:#1e293b; }
+        .poll-opt-btn { display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; font-size:13px; cursor:pointer; transition:all .15s; text-align:left; margin-bottom:4px; }
+        .poll-opt-btn:hover { border-color:var(--primary); background:#f0f7fa; }
+        .poll-opt-btn .p-bar { height:6px; border-radius:3px; background:var(--primary); transition:width .3s; }
+        .poll-opt-btn .p-pct { font-size:11px; font-weight:600; color:#64748b; white-space:nowrap; }
+        .poll-opt-btn.voted { border-color:var(--primary); background:#e8f4f8; }
     </style>
 </head>
 <body class="h-screen flex font-sans text-gray-900 overflow-hidden bg-gray-100">
@@ -160,6 +167,7 @@
                 <button onclick="toggleMenu()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Juegos">🎮</button>
                 <button onclick="toggleScheduleModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Programar">📅</button>
                 <button onclick="showPaymentModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Pedir pago">💰</button>
+                <button onclick="togglePollModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Encuesta">📊</button>
                 <div class="relative"><button onclick="toggleCallPicker(false)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Llamada de voz">📞</button></div>
                 <div class="relative">
                     <button onclick="toggleCallPicker(true)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Videollamada">📹</button>
@@ -548,6 +556,35 @@
         <button onclick="sendReaction('😮')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me sorprende">😮</button>
         <button onclick="sendReaction('😢')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me entristece">😢</button>
         <button onclick="sendReaction('😡')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me enfada">😡</button>
+    </div>
+
+    <!-- Poll modal -->
+    <div id="pollModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)togglePollModal()">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onclick="event.stopPropagation()">
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="font-bold text-lg">📊 Crear encuesta</h3>
+                <button onclick="togglePollModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wide">Pregunta</label>
+                    <input id="pollQuestion" type="text" maxlength="200" placeholder="¿Qué hacemos?" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base outline-none focus:border-[#5a9fbc] mt-1">
+                </div>
+                <div id="pollOptions">
+                    <div><label class="text-xs font-bold text-gray-500 uppercase tracking-wide">Opciones</label></div>
+                    <div class="space-y-2 mt-1">
+                        <input type="text" maxlength="100" placeholder="Opción 1" class="poll-opt w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#5a9fbc]">
+                        <input type="text" maxlength="100" placeholder="Opción 2" class="poll-opt w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#5a9fbc]">
+                    </div>
+                    <button onclick="addPollOption()" class="text-xs text-[#5a9fbc] font-semibold mt-2 hover:underline">+ Agregar opción</button>
+                </div>
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" id="pollMultiple" class="w-4 h-4 rounded accent-[#5a9fbc]">
+                    <span>Voto múltiple (elegir varias)</span>
+                </label>
+                <button onclick="sendPoll()" class="w-full py-3 rounded-xl bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white font-semibold text-sm hover:from-[#4a87a0] hover:to-[#6aa8c4] transition shadow-sm">Crear encuesta</button>
+            </div>
+        </div>
     </div>
 
     <!-- Message info popup -->
@@ -1111,8 +1148,14 @@
                 else if(d.type==="reaction_update"){
                     if(d.room===currentRoom)updateReactions(d.message_id,d.reactions);
                 }
+                else if(d.type==="poll"){
+                    if(d.room===currentRoom)renderPoll(d);
+                }
+                else if(d.type==="poll_update"){
+                    if(d.room===currentRoom)updatePoll(d);
+                }
                 else {
-                    const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result";
+                    const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result"||d.type==="poll";
                     if(isMsg && d.room && d.client_id!==clientId){
                         if(d.room!==currentRoom){
                             console.log('notify: FIRING for room',d.room,'from',d.client_id,'myId',clientId);
@@ -1682,6 +1725,36 @@
         function startReassign(){document.getElementById('reassignRow').classList.toggle('hidden');}
 
         // ─── Payments ───
+        // ─── Polls ───
+        function togglePollModal(){const m=document.getElementById('pollModal');m.classList.toggle('hidden');if(!m.classList.contains('hidden')){document.getElementById('pollQuestion').value='';document.querySelectorAll('.poll-opt').forEach((el,i)=>{el.value='';el.style.display=i<2?'':'none';});document.getElementById('pollMultiple').checked=false;}}
+        function addPollOption(){const opts=document.querySelectorAll('.poll-opt');for(let i=0;i<opts.length;i++){if(opts[i].style.display==='none'){opts[i].style.display='';opts[i].value='';opts[i].focus();break;}}if([...opts].every(o=>o.style.display!=='none')){const div=document.getElementById('pollOptions');const n=document.createElement('input');n.type='text';n.maxLength=100;n.placeholder='Opción '+(opts.length+1);n.className='poll-opt w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#5a9fbc]';div.querySelector('.space-y-2').appendChild(n);n.focus();}}
+        function sendPoll(){
+            const q=document.getElementById('pollQuestion').value.trim();
+            const opts=[...document.querySelectorAll('.poll-opt')].filter(o=>o.style.display!=='none').map(o=>o.value.trim()).filter(v=>v);
+            if(!q||opts.length<2)return alert('Pregunta y al menos 2 opciones');
+            if(!ws||ws.readyState!==WebSocket.OPEN)return alert('Desconectado');
+            ws.send(JSON.stringify({type:'create_poll',question:q,options:opts,multiple:document.getElementById('pollMultiple').checked,room:currentRoom}));
+            togglePollModal();
+        }
+        function renderPoll(d){
+            const div=document.createElement('div');div.className='bubble bubble-in self-start max-w-xs';
+            div.style.background='transparent';div.style.boxShadow='none';
+            div.innerHTML=`<div class="poll-card"><h4>📊 ${escapeHtml(d.question)}</h4><div id="poll_${d.poll_id}" class="space-y-1.5">${d.options.map(o=>`<button class="poll-opt-btn" data-pid="${d.poll_id}" data-oid="${o.id}" onclick="votePoll(${d.poll_id},${o.id})"><span class="flex-1">${escapeHtml(o.text)}</span></button>`).join('')}</div></div>`;
+            chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
+        }
+        function updatePoll(d){
+            const container=document.getElementById('poll_'+d.poll_id);
+            if(!container)return;
+            const total=Math.max(1,d.options.reduce((s,o)=>s+o.votes,0));
+            container.innerHTML=d.options.map(o=>{
+                const pct=Math.round(o.votes/total*100);
+                return `<button class="poll-opt-btn${o.voted?' voted':''}" data-pid="${d.poll_id}" data-oid="${o.id}" onclick="votePoll(${d.poll_id},${o.id})"><span class="flex-1">${escapeHtml(o.text)}</span><span class="flex items-center gap-1.5"><span class="p-pct">${pct}%</span><span class="w-12 bg-gray-200 rounded-full h-1.5"><span class="p-bar block h-full rounded-full" style="width:${pct}%"></span></span></span></button>`;
+            }).join('');
+        }
+        function votePoll(pollId,optionId){
+            if(!ws||ws.readyState!==WebSocket.OPEN)return;
+            ws.send(JSON.stringify({type:'vote_poll',poll_id:pollId,option_id:optionId,room:currentRoom}));
+        }
         function showPaymentModal(){document.getElementById('paymentModal').classList.remove('hidden');document.getElementById('payAmount').value='';document.getElementById('payConcept').value='';document.getElementById('payAmount').focus();}
         function hidePaymentModal(){document.getElementById('paymentModal').classList.add('hidden');}
         let pendingPayment=null;

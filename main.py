@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PushSubscriptionDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PollDB, PollOptionDB, PollVoteDB, PushSubscriptionDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -1668,6 +1668,89 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "action": action,
                         "reaction": reaction,
                     })
+
+            elif msg_type == "create_poll":
+                question = data.get("question", "").strip()
+                options = data.get("options", [])
+                multiple = data.get("multiple", False)
+                room = data.get("room", current_room)
+                sender_name = manager.user_names.get(client_id, client_id)
+                if question and len(options) >= 2:
+                    user = db.query(UserDB).filter(UserDB.username == client_id).first()
+                    poll = PollDB(room=room, question=question, creator_id=user.id if user else None, multiple=multiple)
+                    db.add(poll)
+                    db.commit()
+                    db.refresh(poll)
+                    for opt in options[:10]:
+                        o = PollOptionDB(poll_id=poll.id, text=opt.strip()[:100])
+                        db.add(o)
+                    db.commit()
+                    # Build response
+                    opts = db.query(PollOptionDB).filter(PollOptionDB.poll_id == poll.id).all()
+                    opt_list = [{"id": o.id, "text": o.text, "votes": 0, "voted": False} for o in opts]
+                    await manager.broadcast({
+                        "type": "poll",
+                        "poll_id": poll.id,
+                        "question": question,
+                        "options": opt_list,
+                        "creator": sender_name,
+                        "room": room,
+                        "multiple": multiple,
+                    })
+                    # Also save as chat message for history
+                    try:
+                        chat_db_id = get_or_create_chat(db, room)
+                        db_msg = MessageDB(content=f"📊 Encuesta: {question}", is_game_result=True, sender_id=1, chat_id=chat_db_id)
+                        db.add(db_msg)
+                        db.commit()
+                    except Exception:
+                        pass
+
+            elif msg_type == "vote_poll":
+                poll_id = data.get("poll_id")
+                option_id = data.get("option_id")
+                room = data.get("room", current_room)
+                if poll_id and option_id:
+                    user = db.query(UserDB).filter(UserDB.username == client_id).first()
+                    uid = user.id if user else None
+                    poll = db.query(PollDB).filter(PollDB.id == poll_id).first()
+                    if not poll:
+                        continue
+                    if poll.multiple:
+                        # Toggle vote for this option
+                        existing = db.query(PollVoteDB).filter(
+                            PollVoteDB.poll_id == poll_id,
+                            PollVoteDB.option_id == option_id,
+                            PollVoteDB.user_id == uid
+                        ).first()
+                        if existing:
+                            db.delete(existing)
+                        else:
+                            db.add(PollVoteDB(poll_id=poll_id, option_id=option_id, user_id=uid))
+                    else:
+                        # Remove previous vote, add new one
+                        db.query(PollVoteDB).filter(
+                            PollVoteDB.poll_id == poll_id,
+                            PollVoteDB.user_id == uid
+                        ).delete()
+                        db.add(PollVoteDB(poll_id=poll_id, option_id=option_id, user_id=uid))
+                    db.commit()
+                # Broadcast updated poll
+                opts = db.query(PollOptionDB).filter(PollOptionDB.poll_id == poll_id).all()
+                opt_list = []
+                for o in opts:
+                    vote_count = db.query(PollVoteDB).filter(PollVoteDB.option_id == o.id).count()
+                    voted = db.query(PollVoteDB).filter(
+                        PollVoteDB.option_id == o.id,
+                        PollVoteDB.user_id == (user.id if user else None)
+                    ).first() is not None
+                    opt_list.append({"id": o.id, "text": o.text, "votes": vote_count, "voted": voted})
+                await manager.broadcast({
+                    "type": "poll_update",
+                    "poll_id": poll_id,
+                    "options": opt_list,
+                    "room": room,
+                })
 
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")
