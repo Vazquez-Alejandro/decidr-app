@@ -886,7 +886,7 @@
                             console.log('notify: SAME room msg from',d.client_id);
                         }
                     }
-                    appendMessage(d);
+                    if(d.client_id!==clientId)appendMessage(d);
                     // Store DB message_id if available
                     if(d.message_id && d.msg_id){
                         const el=chat.querySelector(`[data-msg-id="${d.msg_id}"]`);

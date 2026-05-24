@@ -1277,8 +1277,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "reply_to": reply_to
                     }
                     for cid, conn in manager.active_connections.items():
-                        if cid == client_id:
-                            continue
                         try:
                             await conn.send_json(chat_msg)
                         except Exception:
