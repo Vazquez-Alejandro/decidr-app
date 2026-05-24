@@ -105,4 +105,15 @@ class FileDB(Base):
     uploader = relationship("UserDB")
 
 
+class PushSubscriptionDB(Base):
+    __tablename__ = "push_subscriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    endpoint = Column(String, nullable=False)
+    p256dh = Column(String, nullable=False)
+    auth = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    user = relationship("UserDB")
+
+
 Base.metadata.create_all(bind=engine)

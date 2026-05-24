@@ -16,12 +16,41 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, PushSubscriptionDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
+from pywebpush import webpush, WebPushException
 
 Base.metadata.create_all(bind=engine)
+
+# ─── VAPID keys for push notifications ────────────────────────────
+_VAPID_FILE = Path(__file__).parent / ".vapid_keys"
+if _VAPID_FILE.exists():
+    VAPID_PRIVATE_KEY = _VAPID_FILE.read_text().strip()
+    VAPID_PUBLIC_KEY = (Path(__file__).parent / ".vapid_public").read_text().strip()
+else:
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+    from base64 import urlsafe_b64encode
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    VAPID_PRIVATE_KEY = urlsafe_b64encode(
+        private_key.private_bytes(
+            serialization.Encoding.DER,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption()
+        )
+    ).decode().rstrip("=")
+    public_key = private_key.public_key()
+    VAPID_PUBLIC_KEY = urlsafe_b64encode(
+        public_key.public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint
+        )
+    ).decode().rstrip("=")
+    _VAPID_FILE.write_text(VAPID_PRIVATE_KEY)
+    (Path(__file__).parent / ".vapid_public").write_text(VAPID_PUBLIC_KEY)
+VAPID_CLAIMS = {"sub": "mailto:decidr@app.local"}
 
 # ─── JWT ────────────────────────────────────────────────────────────
 _SECRET_FILE = Path(__file__).parent / ".jwt_secret"
@@ -854,6 +883,104 @@ async def get_file(file_id: int, req: Request):
         db.close()
 
 
+# ─── Push notifications ────────────────────────────────────────────
+DERIVED_VAPID_PRIVATE = None  # lazy
+
+
+def get_vapid_private():
+    global DERIVED_VAPID_PRIVATE
+    if DERIVED_VAPID_PRIVATE:
+        return DERIVED_VAPID_PRIVATE
+    from base64 import urlsafe_b64decode
+    der = urlsafe_b64decode(VAPID_PRIVATE_KEY + "==")
+    from cryptography.hazmat.primitives.serialization import load_der_private_key
+    DERIVED_VAPID_PRIVATE = load_der_private_key(der, password=None)
+    return DERIVED_VAPID_PRIVATE
+
+
+async def send_push_notification(username: str, title: str, body: str, room: str = None):
+    db = SessionLocal()
+    try:
+        user = db.query(UserDB).filter(UserDB.username == username).first()
+        if not user:
+            return
+        subs = db.query(PushSubscriptionDB).filter(PushSubscriptionDB.user_id == user.id).all()
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": sub.endpoint,
+                        "keys": {"p256dh": sub.p256dh, "auth": sub.auth}
+                    },
+                    data=json.dumps({"title": title, "body": body, "room": room}),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims=VAPID_CLAIMS,
+                )
+            except WebPushException:
+                # Subscription expired or invalid
+                db.delete(sub)
+                db.commit()
+            except Exception:
+                pass
+    finally:
+        db.close()
+
+
+@app.post("/push/subscribe")
+async def push_subscribe(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    endpoint = body.get("endpoint")
+    p256dh = body.get("keys", {}).get("p256dh")
+    auth = body.get("keys", {}).get("auth")
+    if not endpoint or not p256dh or not auth:
+        return JSONResponse({"error": "Faltan datos"}, status_code=400)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if not u:
+            return JSONResponse({"error": "No encontrado"}, status_code=404)
+        existing = db.query(PushSubscriptionDB).filter(
+            PushSubscriptionDB.user_id == user["id"],
+            PushSubscriptionDB.endpoint == endpoint
+        ).first()
+        if not existing:
+            sub = PushSubscriptionDB(user_id=user["id"], endpoint=endpoint, p256dh=p256dh, auth=auth)
+            db.add(sub)
+            db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.post("/push/unsubscribe")
+async def push_unsubscribe(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    endpoint = body.get("endpoint", "")
+    db = SessionLocal()
+    try:
+        db.query(PushSubscriptionDB).filter(
+            PushSubscriptionDB.user_id == user["id"],
+            PushSubscriptionDB.endpoint == endpoint
+        ).delete()
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.get("/push/vapid-public-key")
+async def vapid_public_key(req: Request):
+    return {"public_key": VAPID_PUBLIC_KEY}
+
+
 @app.get("/profile/blocked/list")
 async def get_blocked(req: Request):
     token = req.headers.get("authorization", "").replace("Bearer ", "")
@@ -1078,6 +1205,30 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             pass
                 except Exception as e:
                     print(f"Broadcast error: {e}")
+                # Send push notifications to room members not viewing this room
+                try:
+                    room_members = db.query(RoomMemberDB).filter(
+                        RoomMemberDB.room_id == chat_db_id
+                    ).all()
+                    room_name = room
+                    for member in room_members:
+                        member_user = db.query(UserDB).filter(UserDB.id == member.user_id).first()
+                        if not member_user or member_user.username == client_id:
+                            continue
+                        c_room = manager.client_rooms.get(member_user.username)
+                        if c_room == room:
+                            continue  # they're viewing this room, skip push
+                        sender_display = sender_name
+                        asyncio.ensure_future(
+                            send_push_notification(
+                                member_user.username,
+                                f"💬 {room_name}",
+                                f"{sender_display}: Nuevo mensaje",
+                                room
+                            )
+                        )
+                except Exception as e:
+                    print(f"Push notification error: {e}")
 
             elif msg_type == "payment":
                 room = data.get("room", current_room)

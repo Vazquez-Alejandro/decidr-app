@@ -35,3 +35,39 @@ self.addEventListener('fetch', e => {
     )
   )
 })
+
+self.addEventListener('push', e => {
+  let data = { title: 'Decidr', body: 'Nuevo mensaje' }
+  try {
+    if (e.data) {
+      data = e.data.json()
+    }
+  } catch (err) {
+    data.body = e.data.text() || 'Nuevo mensaje'
+  }
+  const opts = {
+    body: data.body,
+    icon: '/static/icons/icon.svg',
+    badge: '/static/icons/icon.svg',
+    vibrate: [200, 100, 200],
+    data: { room: data.room || '' }
+  }
+  e.waitUntil(self.registration.showNotification(data.title, opts))
+})
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close()
+  const urlToOpen = '/'
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      for (const client of windowClients) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus()
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen)
+      }
+    })
+  )
+})

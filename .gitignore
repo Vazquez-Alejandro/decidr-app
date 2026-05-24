@@ -7,3 +7,6 @@ certs/
 .mp_token
 .jwt_secret
 static/avatars/
+static/uploads/
+.vapid_keys
+.vapid_public

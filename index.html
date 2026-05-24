@@ -722,7 +722,7 @@
         function logout(){if(ws)ws.close();token=null;myUsername='';localStorage.removeItem('decidr_token');localStorage.removeItem('decidr_username');document.getElementById('loginPass').value='';switchAuthTab('login');showLogin();hideSpinner();}
         document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')authMode==='login'?doLogin():doRegister();});
 
-        function initApp(){Crypto.init();chat=document.getElementById('chat');document.getElementById('myUsername').textContent=myUsername;connectWs();fetchRooms();fetchProfile();}
+        function initApp(){Crypto.init();chat=document.getElementById('chat');document.getElementById('myUsername').textContent=myUsername;connectWs();fetchRooms();fetchProfile();registerPush();}
         (async function(){
             if(token&&myUsername){
                 try{const r=await fetch('/rooms',{headers:{'Authorization':'Bearer '+token}});if(r.ok){clientId=myUsername;hideLogin();loadTheme(myUsername);initApp();return;}}catch(e){}
@@ -786,6 +786,43 @@
             showLogin();
             switchAuthTab('register');
         }
+        // ─── Push notifications ───
+        let pushSubscription=null;
+        async function registerPush(){
+            if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window))return;
+            if(Notification.permission==='denied')return;
+            if(Notification.permission!=='granted'){
+                const perm=await Notification.requestPermission();
+                if(perm!=='granted')return;
+            }
+            try{
+                const reg=await navigator.serviceWorker.ready;
+                let sub=await reg.pushManager.getSubscription();
+                if(!sub){
+                    const r=await fetch('/push/vapid-public-key');
+                    const d=await r.json();
+                    sub=await reg.pushManager.subscribe({
+                        userVisibleOnly:true,
+                        applicationServerKey:urlB64ToUint8Array(d.public_key)
+                    });
+                }
+                pushSubscription=sub;
+                await fetch('/push/subscribe',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint,keys:{p256dh:arrayBufferToBase64(sub.getKey('p256dh')),auth:arrayBufferToBase64(sub.getKey('auth'))}})});
+            }catch(e){console.log('Push registration error:',e);}
+        }
+        function urlB64ToUint8Array(b64){
+            const padding='='.repeat((4-b64.length%4)%4);
+            const b64str=(b64+padding).replace(/\-/g,'+').replace(/_/g,'/');
+            const raw=window.atob(b64str);
+            return Uint8Array.from(raw,c=>c.charCodeAt(0));
+        }
+        function arrayBufferToBase64(buf){
+            const bytes=new Uint8Array(buf);
+            let binary='';
+            for(let i=0;i<bytes.byteLength;i++)binary+=String.fromCharCode(bytes[i]);
+            return btoa(binary);
+        }
+
         function connectWs(){
             const p=location.protocol==="https:"?"wss:":"ws:";
             ws=new WebSocket(`${p}//${location.host}/ws/${clientId}?token=${token}`);
