@@ -1368,6 +1368,38 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     except Exception:
                         pass
 
+            elif msg_type == "typing":
+                room = data.get("room", current_room)
+                sender_name = manager.user_names.get(client_id, client_id)
+                for cid, conn in manager.active_connections.items():
+                    if cid == client_id:
+                        continue
+                    try:
+                        await conn.send_json({
+                            "type": "typing",
+                            "sender": sender_name,
+                            "client_id": client_id,
+                            "room": room
+                        })
+                    except Exception:
+                        pass
+
+            elif msg_type == "stop_typing":
+                room = data.get("room", current_room)
+                sender_name = manager.user_names.get(client_id, client_id)
+                for cid, conn in manager.active_connections.items():
+                    if cid == client_id:
+                        continue
+                    try:
+                        await conn.send_json({
+                            "type": "stop_typing",
+                            "sender": sender_name,
+                            "client_id": client_id,
+                            "room": room
+                        })
+                    except Exception:
+                        pass
+
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")
                 manager.client_rooms[client_id] = room

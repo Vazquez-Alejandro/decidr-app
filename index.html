@@ -846,6 +846,17 @@
                 setTimeout(connectWs,500);
             };
         }
+        let typingUsers={};
+        function updateTypingIndicator(){
+            const el=document.getElementById('roomStatus');
+            const typers=Object.keys(typingUsers).filter(u=>u!==clientId);
+            if(typers.length===0){el.textContent='🔒 Cifrado';return;}
+            const names=typers.map(u=>{const cu=connectedUsers.find(c=>c.id===u);return cu?cu.name:u;});
+            if(names.length===1)el.textContent='✏️ '+names[0]+' está escribiendo...';
+            else if(names.length===2)el.textContent='✏️ '+names[0]+' y '+names[1]+' están escribiendo...';
+            else el.textContent='✏️ Varias personas están escribiendo...';
+        }
+
         async function handleMessage(d){
             try {
                 console.log('handleMessage type:',d.type,'room:',d.room,'cid:',d.client_id,'myId:',clientId,'currRoom:',currentRoom);
@@ -863,6 +874,8 @@
                 else if(d.type==="new_dm"){await fetchRooms();switchRoom(d.room_id,d.from,null,true);}
                 else if(d.type==="edit_message"){handleEditMessage(d);}
                 else if(d.type==="delete_message"){handleDeleteMessage(d);}
+                else if(d.type==="typing"){if(d.room===currentRoom&&d.client_id!==clientId){typingUsers[d.client_id]=true;updateTypingIndicator();clearTimeout(typingUsers['_timeout_'+d.client_id]);typingUsers['_timeout_'+d.client_id]=setTimeout(()=>{delete typingUsers[d.client_id];delete typingUsers['_timeout_'+d.client_id];updateTypingIndicator();},3000);}}
+                else if(d.type==="stop_typing"){if(d.room===currentRoom){delete typingUsers[d.client_id];delete typingUsers['_timeout_'+d.client_id];updateTypingIndicator();}}
                 else {
                     const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result";
                     if(isMsg && d.room && d.client_id!==clientId){
@@ -972,6 +985,26 @@
             }catch(e){}document.getElementById('input').value="";
         }
         document.getElementById('input').addEventListener("keypress",e=>{if(e.key==="Enter")sendText();});
+        // ─── Typing indicator ───
+        let typingTimer=null;
+        const TYPING_INTERVAL=2000;
+        document.getElementById('input').addEventListener('input',function(){
+            if(this.value.trim()){
+                if(!typingTimer){
+                    if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'typing',room:currentRoom}));
+                    typingTimer=setInterval(()=>{
+                        if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'typing',room:currentRoom}));
+                    },TYPING_INTERVAL);
+                }
+            }else{
+                if(typingTimer){clearInterval(typingTimer);typingTimer=null;
+                    if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'stop_typing',room:currentRoom}));}
+            }
+        });
+        document.getElementById('input').addEventListener('blur',function(){
+            if(typingTimer){clearInterval(typingTimer);typingTimer=null;
+                if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'stop_typing',room:currentRoom}));}
+        });
 
         // ─── File sharing ───
         let fileUploading=false;
