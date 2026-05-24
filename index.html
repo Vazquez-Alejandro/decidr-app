@@ -853,6 +853,8 @@
                 else if(d.type==="ice_candidate")handleIceCandidate(d);
                 else if(d.type==="room_key_share")handleRoomKeyShare(d);
                 else if(d.type==="new_dm"){await fetchRooms();switchRoom(d.room_id,d.from,null,true);}
+                else if(d.type==="edit_message"){handleEditMessage(d);}
+                else if(d.type==="delete_message"){handleDeleteMessage(d);}
                 else {
                     const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result";
                     if(isMsg && d.room && d.client_id!==clientId){
@@ -867,10 +869,37 @@
                         }
                     }
                     appendMessage(d);
+                    // Store DB message_id if available
+                    if(d.message_id && d.msg_id){
+                        const el=chat.querySelector(`[data-msg-id="${d.msg_id}"]`);
+                        if(el)el.dataset.messageId=d.message_id;
+                    }
                 }
             } catch(e) {
                 console.log('handleMessage error:',e,d);
             }
+        }
+
+        function handleEditMessage(d){
+            if(d.room&&d.room!==currentRoom)return;
+            const el=chat.querySelector(`[data-message-id="${d.message_id}"]`);
+            if(!el)return;
+            const originalMsg=d.content;
+            let display=originalMsg;
+            if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,originalMsg,d.nonce);if(dec!==null)display=dec;}
+            const isMe=el.classList.contains('bubble-out');
+            const sender=el.dataset.sender||'';
+            const ts=el.dataset.timestamp?new Date(el.dataset.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+            el.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${sender}</span>`:'')+escapeHtml(display)+` <span class="text-[9px] text-gray-400 italic">(editado)</span><div class="flex items-center justify-between mt-1"><span class="text-[9px] text-gray-400 opacity-60">${ts}</span>${isMe?`<span class="flex gap-1"><button onclick="event.stopPropagation();editMsg(this)" class="text-[9px] text-gray-400 hover:text-[#5a9fbc] transition">✏️</button><button onclick="event.stopPropagation();deleteMsg(this)" class="text-[9px] text-gray-400 hover:text-red-500 transition">🗑️</button></span>`:''}</div>`;
+        }
+        function handleDeleteMessage(d){
+            if(d.room&&d.room!==currentRoom)return;
+            const el=chat.querySelector(`[data-message-id="${d.message_id}"]`);
+            if(!el)return;
+            const isMe=el.classList.contains('bubble-out');
+            const sender=el.dataset.sender||'';
+            const ts=el.dataset.timestamp?new Date(el.dataset.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+            el.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${sender}</span>`:'')+`<span class="italic text-gray-400 text-sm">🗑️ Mensaje eliminado</span><div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;
         }
 
         function updatePeerKeys(){console.log('updatePeerKeys: connectedUsers',connectedUsers.length);connectedUsers.forEach(u=>{if(u.key&&u.id!==clientId){try{Crypto.peerKeys[u.id]=nacl.util.decodeBase64(u.key);console.log('updatePeerKeys: added',u.id);}catch(e){console.log('updatePeerKeys: failed for',u.id,e);}}});if(hasRoomKey&&Object.keys(Crypto.peerKeys).length>0){console.log('updatePeerKeys: auto-sharing key with peers');shareRoomKeyWithPeers();}}
@@ -899,7 +928,7 @@
             const t = new Date();
             const ts = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
             const tsFull = t.toLocaleString();
-            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;let fileData=null;try{const p=JSON.parse(display);if(p&&p.type==='file')fileData=p;}catch(e){}if(fileData){const icon=fileData.mime&&fileData.mime.startsWith('image/')?'🖼️':'📄';const sizeStr=fileData.size>1048576?(fileData.size/1048576).toFixed(1)+' MB':(fileData.size/1024).toFixed(1)+' KB';div.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+`<div class="flex items-center gap-3"><span class="text-3xl">${icon}</span><div class="min-w-0 flex-1"><div class="font-semibold text-sm truncate">${escapeHtml(fileData.name)}</div><div class="text-[10px] text-gray-400">${sizeStr}</div></div></div><button onclick="showFilePreview(${fileData.file_id},'${fileData.key}','${escapeHtml(fileData.name)}','${fileData.mime}')" class="mt-2 w-full py-1.5 rounded-lg text-xs font-semibold text-white transition" style="background:var(--primary)">${fileData.mime&&fileData.mime.startsWith('image/')?'👁️ Ver imagen':'⬇️ Descargar'}</button><div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';}else{div.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+escapeHtml(display)+`<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';div.style.cursor='pointer';div.onclick=function(e){e.stopPropagation();showMsgInfo(this);};}}
+            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;if(d.msg_id)div.dataset.msgId=d.msg_id;div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';if(d.deleted){div.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+`<span class="italic text-gray-400 text-sm">🗑️ Mensaje eliminado</span><div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;}else{let fileData=null;try{const p=JSON.parse(display);if(p&&p.type==='file')fileData=p;}catch(e){}if(fileData){const icon=fileData.mime&&fileData.mime.startsWith('image/')?'🖼️':'📄';const sizeStr=fileData.size>1048576?(fileData.size/1048576).toFixed(1)+' MB':(fileData.size/1024).toFixed(1)+' KB';div.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+`<div class="flex items-center gap-3"><span class="text-3xl">${icon}</span><div class="min-w-0 flex-1"><div class="font-semibold text-sm truncate">${escapeHtml(fileData.name)}</div><div class="text-[10px] text-gray-400">${sizeStr}</div></div></div><button onclick="showFilePreview(${fileData.file_id},'${fileData.key}','${escapeHtml(fileData.name)}','${fileData.mime}')" class="mt-2 w-full py-1.5 rounded-lg text-xs font-semibold text-white transition" style="background:var(--primary)">${fileData.mime&&fileData.mime.startsWith('image/')?'👁️ Ver imagen':'⬇️ Descargar'}</button><div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;}else{const editLabel=d.edited?' <span class="text-[9px] text-gray-400 italic">(editado)</span>':'';div.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+escapeHtml(display)+editLabel+`<div class="flex items-center justify-between mt-1"><span class="text-[9px] text-gray-400 opacity-60">${ts}</span>${isMe?`<span class="flex gap-1"><button onclick="event.stopPropagation();editMsg(this)" class="text-[9px] text-gray-400 hover:text-[#5a9fbc] transition" title="Editar">✏️</button><button onclick="event.stopPropagation();deleteMsg(this)" class="text-[9px] text-gray-400 hover:text-red-500 transition" title="Eliminar">🗑️</button></span>`:''}</div>`;}if(!fileData&&!d.is_file){div.style.cursor='pointer';div.onclick=function(e){if(e.target.tagName==='BUTTON')return;e.stopPropagation();showMsgInfo(this);};}}}
             else if(d.type==="scheduled"){div.className="bubble bubble-scheduled";let display=d.content;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);if(dec!==null)display=dec;else display="🔒 Mensaje cifrado";}div.innerHTML=`<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${d.sender}</div>${escapeHtml(display)}<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;}
             else if(d.type==="system"){div.className="system-msg";div.innerText=d.content;if(d.content.includes("Pozo"))document.getElementById('papelitoInput').classList.remove('hidden');}
             else if(d.type==="game_result"){div.className="game-result";div.innerHTML=d.content.replace(/\n/g,'<br>');if(d.content.includes("✊✋✌️")||d.content.includes("empate")||d.content.includes("gana")){document.getElementById('pptInput').classList.add('hidden');pptChosen=false;}}
@@ -909,12 +938,14 @@
         function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 
         const pendingMessages=[];
+        let msgCounter=0;
+        function nextMsgId(){return Date.now().toString(36)+'-'+(++msgCounter).toString(36);}
         function sendText(){
             const val=document.getElementById('input').value;if(!val.trim())return;
-            try{const enc=Crypto.encryptMessage(currentRoom,val);const p={type:"text",room:currentRoom};if(enc){p.content=enc.ciphertext;p.nonce=enc.nonce;}else p.content=val;
+            try{const enc=Crypto.encryptMessage(currentRoom,val);const msgId=nextMsgId();const p={type:"text",room:currentRoom,msg_id:msgId};if(enc){p.content=enc.ciphertext;p.nonce=enc.nonce;}else p.content=val;
             if(!ws||ws.readyState!==WebSocket.OPEN){console.log('WS not open, queuing');pendingMessages.push(p);connectWs();}else{ws.send(JSON.stringify(p));}
             console.log('sendText room:',currentRoom,'content:',val);
-            appendMessage({type:"chat",client_id:clientId,sender:"",content:val});
+            appendMessage({type:"chat",client_id:clientId,sender:"",content:val,msg_id:msgId});
             }catch(e){}document.getElementById('input').value="";
         }
         document.getElementById('input').addEventListener("keypress",e=>{if(e.key==="Enter")sendText();});
@@ -1003,6 +1034,78 @@
             } else {
                 downloadFile(fileId,fileKeyB64,fileName);
             }
+        }
+
+        // ─── Edit/Delete messages ───
+        function editMsg(btn){
+            const bubble=btn.closest('.bubble');
+            if(!bubble)return;
+            const msgId=bubble.dataset.messageId;
+            if(!msgId)return;
+            const textNode=bubble.childNodes[0];
+            const currentText=textNode?.nodeType===3?textNode.textContent:textNode?.textContent||'';
+            const input=document.createElement('input');
+            input.type='text';
+            input.value=currentText;
+            input.className='w-full border border-[#5a9fbc] rounded-lg px-3 py-1.5 text-sm outline-none';
+            input.style.background='white';
+            const saveBtn=document.createElement('button');
+            saveBtn.textContent='✓';
+            saveBtn.className='text-green-600 font-bold text-sm ml-1 hover:text-green-700';
+            const cancelBtn=document.createElement('button');
+            cancelBtn.textContent='✕';
+            cancelBtn.className='text-gray-400 text-sm ml-1 hover:text-gray-600';
+            const actionsDiv=document.createElement('div');
+            actionsDiv.className='flex items-center gap-1 mt-1';
+            actionsDiv.appendChild(saveBtn);
+            actionsDiv.appendChild(cancelBtn);
+            const originalContent=bubble.innerHTML;
+            bubble.innerHTML='';
+            const wrapper=document.createElement('div');
+            wrapper.className='flex items-center';
+            wrapper.appendChild(input);
+            bubble.appendChild(wrapper);
+            bubble.appendChild(actionsDiv);
+            input.focus();
+            input.select();
+            const done=async ()=>{
+                const val=input.value.trim();
+                if(!val||val===currentText){bubble.innerHTML=originalContent;return;}
+                const enc=Crypto.encryptMessage(currentRoom,val);
+                const newContent=enc?enc.ciphertext:val;
+                const newNonce=enc?enc.nonce:null;
+                try{
+                    const r=await fetch('/messages/'+msgId,{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({content:newContent,nonce:newNonce})});
+                    if(!r.ok){alert('Error al editar');return;}
+                    if(ws&&ws.readyState===WebSocket.OPEN){
+                        ws.send(JSON.stringify({type:'edit_message',message_id:parseInt(msgId),content:newContent,nonce:newNonce,room:currentRoom}));
+                    }
+                    const sender=bubble.dataset.sender||'';
+                    const isMe=bubble.classList.contains('bubble-out');
+                    const ts=bubble.dataset.timestamp?new Date(bubble.dataset.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+                    bubble.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${sender}</span>`:'')+escapeHtml(val)+` <span class="text-[9px] text-gray-400 italic">(editado)</span><div class="flex items-center justify-between mt-1"><span class="text-[9px] text-gray-400 opacity-60">${ts}</span>${isMe?`<span class="flex gap-1"><button onclick="event.stopPropagation();editMsg(this)" class="text-[9px] text-gray-400 hover:text-[#5a9fbc] transition">✏️</button><button onclick="event.stopPropagation();deleteMsg(this)" class="text-[9px] text-gray-400 hover:text-red-500 transition">🗑️</button></span>`:''}</div>`;
+                }catch(e){alert('Error');bubble.innerHTML=originalContent;}
+            };
+            saveBtn.onclick=done;
+            cancelBtn.onclick=()=>{bubble.innerHTML=originalContent;};
+            input.addEventListener('keydown',e=>{if(e.key==='Enter')done();if(e.key==='Escape')bubble.innerHTML=originalContent;});
+        }
+        async function deleteMsg(btn){
+            const bubble=btn.closest('.bubble');
+            if(!bubble||!confirm('¿Eliminar este mensaje?'))return;
+            const msgId=bubble.dataset.messageId;
+            if(!msgId)return;
+            try{
+                const r=await fetch('/messages/'+msgId,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+                if(!r.ok){alert('Error al eliminar');return;}
+                if(ws&&ws.readyState===WebSocket.OPEN){
+                    ws.send(JSON.stringify({type:'delete_message',message_id:parseInt(msgId),room:currentRoom}));
+                }
+                const isMe=bubble.classList.contains('bubble-out');
+                const sender=bubble.dataset.sender||'';
+                const ts=bubble.dataset.timestamp?new Date(bubble.dataset.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+                bubble.innerHTML=(!isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${sender}</span>`:'')+`<span class="italic text-gray-400 text-sm">🗑️ Mensaje eliminado</span><div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;
+            }catch(e){alert('Error');}
         }
 
         // ─── Schedule ───

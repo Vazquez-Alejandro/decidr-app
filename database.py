@@ -54,6 +54,8 @@ class MessageDB(Base):
     sender_id = Column(Integer, ForeignKey("users.id"), default=1)
     chat_id = Column(Integer, ForeignKey("chats.id"), default=1)
     is_game_result = Column(Boolean, default=False)
+    edited = Column(Boolean, default=False)
+    deleted = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     sender = relationship("UserDB")
     chat = relationship("ChatDB")

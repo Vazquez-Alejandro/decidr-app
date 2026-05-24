@@ -883,6 +883,60 @@ async def get_file(file_id: int, req: Request):
         db.close()
 
 
+# ─── Message edit/delete ────────────────────────────────────────────
+@app.put("/messages/{message_id}")
+async def edit_message(message_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    content = body.get("content", "")
+    nonce = body.get("nonce")
+    if not content:
+        return JSONResponse({"error": "Contenido requerido"}, status_code=400)
+    db = SessionLocal()
+    try:
+        msg = db.query(MessageDB).filter(MessageDB.id == message_id).first()
+        if not msg:
+            return JSONResponse({"error": "Mensaje no encontrado"}, status_code=404)
+        sender = db.query(UserDB).filter(UserDB.id == msg.sender_id).first()
+        if not sender or sender.username != user["username"]:
+            return JSONResponse({"error": "No podés editar mensajes de otros"}, status_code=403)
+        if msg.deleted:
+            return JSONResponse({"error": "Mensaje eliminado"}, status_code=400)
+        msg.content = content
+        msg.nonce = nonce
+        msg.edited = True
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.delete("/messages/{message_id}")
+async def delete_message(message_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        msg = db.query(MessageDB).filter(MessageDB.id == message_id).first()
+        if not msg:
+            return JSONResponse({"error": "Mensaje no encontrado"}, status_code=404)
+        sender = db.query(UserDB).filter(UserDB.id == msg.sender_id).first()
+        if not sender or sender.username != user["username"]:
+            return JSONResponse({"error": "No podés eliminar mensajes de otros"}, status_code=403)
+        msg.deleted = True
+        msg.content = None
+        msg.nonce = None
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
 # ─── Push notifications ────────────────────────────────────────────
 DERIVED_VAPID_PRIVATE = None  # lazy
 
@@ -1183,9 +1237,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 content = data.get("content", "")
                 nonce = data.get("nonce")
                 room = data.get("room", current_room)
+                msg_id = data.get("msg_id", "")
                 manager.client_rooms[client_id] = room
                 current_room = room
                 # Save to DB (best effort)
+                db_msg_id = None
                 try:
                     chat_db_id = get_or_create_chat(db, room)
                     user = db.query(UserDB).filter(UserDB.username == client_id).first()
@@ -1198,6 +1254,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     )
                     db.add(db_msg)
                     db.commit()
+                    db_msg_id = db_msg.id
                 except Exception as e:
                     print(f"DB save error: {e}")
                 # Broadcast to all (happens regardless of DB success)
@@ -1209,7 +1266,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "content": content,
                         "nonce": nonce,
                         "client_id": client_id,
-                        "room": room
+                        "room": room,
+                        "msg_id": msg_id,
+                        "message_id": db_msg_id
                     }
                     for cid, conn in manager.active_connections.items():
                         if cid == client_id:
@@ -1265,6 +1324,44 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         continue
                     try:
                         await conn.send_json(chat_msg)
+                    except Exception:
+                        pass
+
+            elif msg_type == "edit_message":
+                msg_id = data.get("message_id")
+                content = data.get("content", "")
+                nonce = data.get("nonce")
+                room = data.get("room", current_room)
+                sender_name = manager.user_names.get(client_id, client_id)
+                for cid, conn in manager.active_connections.items():
+                    if cid == client_id:
+                        continue
+                    try:
+                        await conn.send_json({
+                            "type": "edit_message",
+                            "message_id": msg_id,
+                            "content": content,
+                            "nonce": nonce,
+                            "sender": sender_name,
+                            "room": room
+                        })
+                    except Exception:
+                        pass
+
+            elif msg_type == "delete_message":
+                msg_id = data.get("message_id")
+                room = data.get("room", current_room)
+                sender_name = manager.user_names.get(client_id, client_id)
+                for cid, conn in manager.active_connections.items():
+                    if cid == client_id:
+                        continue
+                    try:
+                        await conn.send_json({
+                            "type": "delete_message",
+                            "message_id": msg_id,
+                            "sender": sender_name,
+                            "room": room
+                        })
                     except Exception:
                         pass
 
