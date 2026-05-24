@@ -1238,6 +1238,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 nonce = data.get("nonce")
                 room = data.get("room", current_room)
                 msg_id = data.get("msg_id", "")
+                reply_to = data.get("reply_to")
                 manager.client_rooms[client_id] = room
                 current_room = room
                 # Save to DB (best effort)
@@ -1250,7 +1251,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         nonce=nonce,
                         is_game_result=False,
                         sender_id=user.id if user else 1,
-                        chat_id=chat_db_id
+                        chat_id=chat_db_id,
+                        reply_to=reply_to
                     )
                     db.add(db_msg)
                     db.commit()
@@ -1268,7 +1270,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "client_id": client_id,
                         "room": room,
                         "msg_id": msg_id,
-                        "message_id": db_msg_id
+                        "message_id": db_msg_id,
+                        "reply_to": reply_to
                     }
                     for cid, conn in manager.active_connections.items():
                         if cid == client_id:
