@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, PushSubscriptionDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PushSubscriptionDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -1630,6 +1630,44 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     db.commit()
                 except Exception:
                     pass
+
+            elif msg_type == "reaction":
+                msg_id = data.get("message_id")
+                reaction = data.get("reaction", "").strip()
+                room = data.get("room", current_room)
+                sender_name = manager.user_names.get(client_id, client_id)
+                if msg_id and reaction:
+                    user = db.query(UserDB).filter(UserDB.username == client_id).first()
+                    uid = user.id if user else None
+                    # Toggle: if same user+msg+reaction exists, remove it
+                    existing = db.query(ReactionDB).filter(
+                        ReactionDB.message_id == msg_id,
+                        ReactionDB.user_id == uid,
+                        ReactionDB.reaction == reaction
+                    ).first()
+                    if existing:
+                        db.delete(existing)
+                        db.commit()
+                        action = "removed"
+                    else:
+                        r = ReactionDB(message_id=msg_id, user_id=uid, reaction=reaction)
+                        db.add(r)
+                        db.commit()
+                        action = "added"
+                    # Get all reactions for this message
+                    all_reactions = db.query(ReactionDB).filter(ReactionDB.message_id == msg_id).all()
+                    reaction_list = {}
+                    for rr in all_reactions:
+                        reaction_list.setdefault(rr.reaction, []).append(rr.user_id)
+                    await manager.broadcast({
+                        "type": "reaction_update",
+                        "message_id": msg_id,
+                        "room": room,
+                        "reactions": reaction_list,
+                        "by_user": uid,
+                        "action": action,
+                        "reaction": reaction,
+                    })
 
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")

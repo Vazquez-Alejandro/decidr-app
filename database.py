@@ -122,6 +122,17 @@ class FileDB(Base):
     uploader = relationship("UserDB")
 
 
+class ReactionDB(Base):
+    __tablename__ = "reactions"
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    reaction = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    message = relationship("MessageDB")
+    user = relationship("UserDB")
+
+
 class PushSubscriptionDB(Base):
     __tablename__ = "push_subscriptions"
     id = Column(Integer, primary_key=True, index=True)

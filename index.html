@@ -64,6 +64,11 @@
         .logo-blend { mask-image: radial-gradient(circle at center, black 30%, transparent 72%); -webkit-mask-image: radial-gradient(circle at center, black 30%, transparent 72%); }
         @keyframes buzzShake { 0%,100% { transform: translateX(0); } 10%,30%,50%,70%,90% { transform: translateX(-4px); } 20%,40%,60%,80% { transform: translateX(4px); } }
         .buzz-anim { animation: buzzShake 0.6s ease-in-out 3; }
+        .reactions-row { display:flex; gap:2px; flex-wrap:wrap; margin-top:4px; }
+        .reaction-badge { display:inline-flex; align-items:center; gap:2px; padding:1px 6px; border-radius:12px; background:#f1f3f5; font-size:12px; cursor:pointer; border:1px solid transparent; transition:all .15s; user-select:none; }
+        .reaction-badge:hover { background:#e9ecef; }
+        .reaction-badge.mine { background:#e8f4f8; border-color:var(--primary); }
+        .reaction-badge .r-count { font-size:10px; color:#6c757d; font-weight:600; min-width:8px; text-align:center; }
     </style>
 </head>
 <body class="h-screen flex font-sans text-gray-900 overflow-hidden bg-gray-100">
@@ -533,6 +538,16 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Reaction picker -->
+    <div id="reactionPicker" class="hidden fixed z-[60] flex gap-0.5 bg-white rounded-2xl shadow-2xl border border-gray-200 px-2.5 py-2" style="transform:translate(-50%,-100%);">
+        <button onclick="sendReaction('👍')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me gusta">👍</button>
+        <button onclick="sendReaction('❤️')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me encanta">❤️</button>
+        <button onclick="sendReaction('😂')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me divierte">😂</button>
+        <button onclick="sendReaction('😮')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me sorprende">😮</button>
+        <button onclick="sendReaction('😢')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me entristece">😢</button>
+        <button onclick="sendReaction('😡')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me enfada">😡</button>
     </div>
 
     <!-- Message info popup -->
@@ -1093,6 +1108,9 @@
                     if(knownUsers[clientId])knownUsers[clientId].status_text=d.status_text;
                     updateUserStatusDisplay(currentRoomName,d.status_text);
                 }
+                else if(d.type==="reaction_update"){
+                    if(d.room===currentRoom)updateReactions(d.message_id,d.reactions);
+                }
                 else {
                     const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result";
                     if(isMsg && d.room && d.client_id!==clientId){
@@ -1208,7 +1226,14 @@
             else if(d.type==="system"){div.className="system-msg";div.innerText=d.content;if(d.content.includes("Pozo"))document.getElementById('papelitoInput').classList.remove('hidden');}
             else if(d.type==="game_result"){div.className="game-result";div.innerHTML=d.content.replace(/\n/g,'<br>');if(d.content.includes("✊✋✌️")||d.content.includes("empate")||d.content.includes("gana")){document.getElementById('pptInput').classList.add('hidden');pptChosen=false;}}
             else if(d.type==="payment"){const isMe=d.client_id===clientId;div.className="bubble "+(isMe?"bubble-out":"bubble-in");div.innerHTML=`<div class="text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${escapeHtml(d.sender)}</div><div class="flex items-center gap-2"><span class="text-2xl">💰</span><div><div class="font-bold text-sm">${escapeHtml(d.concept||'Pago')}</div><div class="text-lg font-black" style="color:#667eea">$${parseFloat(d.amount).toFixed(2)}</div></div></div>${!isMe?`<a href="${escapeHtml(d.init_point)}" target="_blank" class="block mt-2 text-center py-2 rounded-lg font-bold text-white text-sm" style="background:linear-gradient(135deg,#667eea,#764ba2)">Pagar con MP</a>`:`<div class="text-xs text-gray-400 mt-1 text-center">💰 Solicitud de pago enviada</div>`}`;}
-            chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
+            if(div.dataset.messageId||div.dataset.msgId){
+            const mid=div.dataset.messageId||div.dataset.msgId;
+            div.addEventListener('click',function(e){
+                if(e.target.closest('.reaction-badge')||e.target.closest('.reactions-row')||e.target.closest('.msg-status')||e.target.closest('button'))return;
+                showReactionPicker(e,mid);
+            });
+        }
+        chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
         }
         function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 
@@ -1519,6 +1544,45 @@
             }catch(e){}
         }
 
+        // ─── Reactions ───
+        let reactionPickerMsgId=null;
+        function showReactionPicker(e,msgId){
+            e.stopPropagation();
+            const picker=document.getElementById('reactionPicker');
+            reactionPickerMsgId=msgId;
+            const rect=e.currentTarget.getBoundingClientRect();
+            picker.style.left=rect.left+rect.width/2+'px';
+            picker.style.top=rect.top-8+'px';
+            picker.classList.remove('hidden');
+        }
+        document.addEventListener('click',function(){const p=document.getElementById('reactionPicker');if(!p.classList.contains('hidden'))p.classList.add('hidden');});
+        function sendReaction(reaction){
+            const picker=document.getElementById('reactionPicker');
+            picker.classList.add('hidden');
+            const msgId=reactionPickerMsgId;
+            if(!msgId||!ws||ws.readyState!==WebSocket.OPEN)return;
+            ws.send(JSON.stringify({type:'reaction',message_id:parseInt(msgId),reaction,room:currentRoom}));
+        }
+        function updateReactions(msgId,reactions){
+            const el=document.querySelector(`[data-message-id="${msgId}"]`)||document.querySelector(`[data-msgid="${msgId}"]`);
+            if(!el)return;
+            let container=el.querySelector('.reactions-row');
+            if(!container){
+                container=document.createElement('div');
+                container.className='reactions-row';
+                el.appendChild(container);
+            }
+            container.innerHTML='';
+            const myUid=myUserId; // set after login
+            Object.entries(reactions).forEach(([emoji,uids])=>{
+                const badge=document.createElement('span');
+                badge.className='reaction-badge'+(uids.includes(myUid)?' mine':'');
+                badge.innerHTML=`${emoji}<span class="r-count">${uids.length}</span>`;
+                badge.title=uids.join(', ');
+                badge.onclick=function(){sendReaction(emoji);};
+                container.appendChild(badge);
+            });
+        }
         // ─── Edit/Delete messages ───
         function editMsg(btn){
             const bubble=btn.closest('.bubble');

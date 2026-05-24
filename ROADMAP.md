@@ -33,6 +33,7 @@
 - Buy Me a Coffee profile URL
 - Custom status text (presets + free text)
 - Buzz (nudge) with configurable allow_buzz
+- Audio/video file support (inline player with speed 1x/1.5x/2x, view once)
 
 ## 🔜 Next Features (User side)
 
