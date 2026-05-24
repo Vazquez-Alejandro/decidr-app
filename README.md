@@ -11,13 +11,22 @@ Mensajería instantánea con cifrado E2EE, llamadas, juegos y pagos integrados.
 - **Salas persistentes** — Grupos con membresía en DB, cada uno con su propia clave E2EE.
 - **Mensajes programados** — Redacción y envío en fecha/hora elegida.
 - **Selector de emojis** integrado.
+- **Editar y eliminar mensajes** — ✏️ y 🗑️ en burbujas propias, broadcast en tiempo real.
+- **Responder mensajes (reply)** — ↩️ en burbujas ajenas, preview con cita. Soporte multi-reply seleccionando varios mensajes a la vez.
+- **Compartir archivos** — Imágenes, PDFs, documentos, audio/video hasta 50 MB. Cifrados E2EE con clave por archivo.
+- **Indicador de escritura** — Muestra en tiempo real quién está escribiendo en la sala.
 
 ### Llamadas
-- **Voz y video** vía WebRTC con señalización WebSocket + STUN público.
+- **Voz y video** vía WebRTC con señalización WebSocket + STUN público + **TURN server local** (coturn) para conectividad NAT.
 - Interface con silenciar, toggle de cámara y colgar.
 
 ### Juegos
 - 🎲 Dado más alto · 🪵 Palito más largo · ✊ PPT · 📝 Papelitos · 🔤 Palabras al azar
+
+### Notificaciones push
+- **Notificaciones Web Push** vía Service Worker + pywebpush.
+- Suscripción automática al iniciar sesión.
+- Notificaciones de mensajes nuevos en salas no visibles.
 
 ### Perfil
 - Avatar, nombre visible, biografía, teléfono.
@@ -41,6 +50,7 @@ Mensajería instantánea con cifrado E2EE, llamadas, juegos y pagos integrados.
 - Rate limiting (120 req/min).
 - Bloqueo de usuarios.
 - PIN de pago hasheado — ni siquiera el servidor conoce el PIN en texto plano.
+- TURN server autenticado (username/password estático).
 
 ### Interfaz
 - Responsive, sidebar colapsable, swipe gesture en móvil.
@@ -53,9 +63,11 @@ Mensajería instantánea con cifrado E2EE, llamadas, juegos y pagos integrados.
 
 | Capa | Tecnología |
 |------|-----------|
-| Backend | Python 3.11+ · FastAPI · SQLAlchemy · SQLite · bcrypt · PyJWT |
+| Backend | Python 3.11+ · FastAPI · SQLAlchemy · SQLite/PostgreSQL · bcrypt · PyJWT · pywebpush |
 | Frontend | HTML + Tailwind CSS · tweetnacl-js · WebRTC · WebSocket · PWA |
+| Llamadas | WebRTC + coturn (TURN local) |
 | Pagos | Mercado Pago API (Checkout Pro) |
+| Notificaciones | Web Push API + VAPID |
 
 ---
 
@@ -68,25 +80,46 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### PostgreSQL (opcional)
+
+Por defecto usa SQLite. Para PostgreSQL, configurar la variable de entorno:
+
+```bash
+export DATABASE_URL="postgresql://user:pass@localhost/decidr"
+```
+
 ## Uso
 
 ```bash
 # Desarrollo
-uvicorn main:app --reload --host 0.0.0.0 --port 8222
+DATABASE_URL="sqlite:///./decidr.db" uvicorn main:app --reload --host 0.0.0.0 --port 8222
 
-# Producción (con HTTPS)
+# Producción (con HTTPS + TURN)
 ./run.sh
 ```
 
 ### Configurar Mercado Pago
 
-Para que los pagos funcionen, crear el archivo `.mp_token` en la raíz del proyecto con tu access token de Mercado Pago:
-
 ```bash
+# Opción A: archivo directo
 echo "APP_USR-xxxxxxxxxxxxxxxxxxxxxxxx" > .mp_token
+
+# Opción B: variable de entorno (en .env)
+echo "MP_ACCESS_TOKEN=APP_USR-xxxxxxxxxxxxxxxxxxxxxxxx" >> .env
 ```
 
 O configurarlo desde la app (usuario admin "Alejandro") vía `POST /admin/mp-token`.
+
+### Variables de entorno
+
+Todas las configuraciones sensibles son configurables vía `.env`:
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `DATABASE_URL` | `sqlite:///./decidr.db` | Conexión a DB |
+| `JWT_SECRET` | (auto-generado) | Secreto para firmar tokens |
+| `JWT_EXPIRY` | `86400` | Expiración del token en segundos |
+| `MP_ACCESS_TOKEN` | (desde `.mp_token`) | Token de Mercado Pago |
 
 ---
 
@@ -136,7 +169,7 @@ O configurarlo desde la app (usuario admin "Alejandro") vía `POST /admin/mp-tok
 |----------|-------------|
 | `/ws/{client_id}?token={jwt}` | Conexión bidireccional en tiempo real |
 
-Tipos de mensaje: `text`, `payment`, `set_room`, `public_key`, `room_key_share`, `get_users`, `schedule`, `call_*`, `offer`, `answer`, `ice_candidate`, `game_action`.
+Tipos de mensaje: `text`, `payment`, `set_room`, `public_key`, `room_key_share`, `get_users`, `schedule`, `call_*`, `offer`, `answer`, `ice_candidate`, `game_action`, `typing`, `stop_typing`, `edit_message`, `delete_message`, `new_dm`, `room_key_share`.
 
 ---
 
@@ -144,13 +177,18 @@ Tipos de mensaje: `text`, `payment`, `set_room`, `public_key`, `room_key_share`,
 
 ```
 decidr-app/
-├── main.py              # Servidor FastAPI (rutas, WS, juegos, pagos)
+├── main.py              # Servidor FastAPI (rutas, WS, juegos, pagos, push, TURN)
 ├── database.py          # Modelos SQLAlchemy
 ├── index.html           # SPA frontend (todo en un archivo)
-├── run.sh               # Lanzamiento HTTPS
+├── run.sh               # Lanzamiento HTTPS + TURN server
+├── turn.sh              # Gestor de coturn (start/stop/status)
+├── turnserver.conf      # Configuración de coturn
 ├── requirements.txt     # Dependencias Python
+├── .env                 # Variables de entorno (configurable)
 ├── .mp_token            # Token de Mercado Pago (no se sube a git)
 ├── .jwt_secret          # Secreto JWT (no se sube a git)
+├── .vapid_keys          # Claves VAPID para push (no se sube a git)
+├── .vapid_public        # Clave pública VAPID (no se sube a git)
 ├── decidr.db            # SQLite (se crea solo)
 ├── certs/               # Certificados TLS
 └── static/              # Manifest, service worker, iconos, avatares
