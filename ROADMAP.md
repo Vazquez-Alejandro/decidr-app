@@ -17,50 +17,62 @@
 - Close chat button (✕) + `DELETE /rooms/{id}` endpoint
 - Gradient wallpapers now set as `--chat-bg-image` instead of `--chat-bg`
 - `loadTheme` backward compat: gradients stored in `bg` are migrated to `bgImage`
+- File sharing (E2EE upload/download, 50MB limit)
+- Push notifications (VAPID, service worker)
+- TURN server (coturn, /ice-config)
+- Edit/delete messages
+- Reply to messages
+- Typing indicator
+- PostgreSQL support (DATABASE_URL)
+- Environment variables (JWT_SECRET, MP_ACCESS_TOKEN)
+- Multi-reply
+- View once (bomb image)
+- Message status (pending/sent/delivered/read)
+- Online / last seen
+- Privacy settings (read receipts, online status, last seen)
+- Buy Me a Coffee profile URL
+- Custom status text (presets + free text)
+- Buzz (nudge) with configurable allow_buzz
 
-## ❌ Remaining Issues (for next session)
+## 🔜 Next Features (User side)
 
-### 1. Notifications still don't fire
-**To debug:**
-1. Open Console (F12) in both browser windows
-2. Make sure both accounts are logged in
-3. Make sure each account is in a DIFFERENT room
-4. Send a message from account A
-5. Look for these logs in account B's console:
-   - `handleMessage type: chat room: <id> cid: <from> myId: <to> currRoom: <current>`
-   - `notify: FIRING for room ...` (if room differs)
-   - If "notify: SAME room msg" → B is in the same room as A
-   - If neither → the `else` block isn't reached; check `d.type`
-   - If `d.room !== currentRoom` is false but should be true → type mismatch (string vs string?)
-   - If any error, it will show as `handleMessage error: ...`
+### 1. Spotify integration — requires user action
+**What the user needs to do:**
+1. Go to https://developer.spotify.com/dashboard
+2. Log in with your Spotify account
+3. Click "Create App" → name: "Decidr", description: "Mostrar lo que escucho en el chat"
+4. Copy **Client ID** and **Client Secret**
+5. Add `http://localhost:8000/spotify/callback` (or your domain) as Redirect URI
+6. Pass those values to the dev when implementing
 
-**Possible causes:**
-- `currentRoom` not properly set at message arrival time
-- Both accounts somehow in the same room
-- WebSocket not receiving the broadcast (unlikely)
+**What the code will do:**
+- `UserDB.spotify_access_token`, `spotify_refresh_token`
+- OAuth flow: `/spotify/login` → Spotify → `/spotify/callback` → store tokens
+- Background task: poll `https://api.spotify.com/v1/me/player/currently-playing` every 30s
+- Broadcast `set_status` via WS when track changes
+- Frontend shows "🎵 *Song* — *Artist*" in status
 
-### 2. Close chat button (✕) doesn't appear
-**Possible causes:**
-- Page not refreshed after code changes (Ctrl+F5 needed)
-- `myRooms.find(r => r.id.toString() === currentRoom)` returns undefined
-  - If `fetchRooms()` failed, `myRooms` is empty
-  - If `currentRoom` doesn't match any room ID
-  - Check console for `switchRoom called` -> what `id` and `name`?
+### 2. Full-screen animations (beso, corazones, etc.) — requires user action
+**What the user needs to do:**
+- Find/buy/create animated GIFs or CSS animations (e.g., kiss, hearts, fireworks)
+- Options:
+  a) **GIFs** — search Tenor/Giphy for "kiss animation", etc., download or hotlink
+  b) **CSS particles** — heart-shaped divs that float upward with CSS animation
+  c) **Lottie animations** — lightweight JSON animations from lottiefiles.com
 
-### 3. (Fixed) Gradients not rendering
-Gradients were being set as `background-color: linear-gradient(...)` which is invalid.
-**Fixed:** Now sets gradient as `--chat-bg-image` with `--chat-bg: #f0f5f9` as fallback.
-Old saved themes with gradient in `bg` are auto-migrated on `loadTheme`.
+**What the code will do:**
+- WS type `animation` with `type: "kiss" | "hearts" | ...`
+- Receiver shows fullscreen overlay with the animation for 3s
+- Configurable "allow_animations" toggle in privacy
+- Button next to buzz in chat footer to send animation
 
-### 4. (Fixed) Auto-login per-user theme
-`(async function(){...})()` IIFE that auto-logs in skipped `loadTheme(myUsername)`.
-**Fixed:** Added `loadTheme(myUsername)` before `initApp()` in the IIFE.
-
-## Next Session Kickoff
-1. Read this ROADMAP.md
-2. Fix notifications (ask user for console logs first)
-3. Fix close chat button (check console logs for `switchRoom called`)
-4. Deploy, play, profit
+## 🔧 Backlog (Technical debt / improvements)
+- Alembic migrations (instead of manual DB recreate on schema changes)
+- Logging (instead of print())
+- Message history loading / infinite scroll
+- Read receipts respect privacy completely (contacts mode needs contact list)
+- Group admin features (remove members, change name)
+- Notification click opens correct chat
 
 ## Key Context for Next Time
 - **Crypto.encryptRoomKeyFor** must receive `Uint8Array` (peer public key bytes), not string
@@ -73,3 +85,6 @@ Old saved themes with gradient in `bg` are auto-migrated on `loadTheme`.
 - Per-user theme key: `decidr_theme_{username}`
 - Room IDs are strings in `currentRoom`, numbers in `r.id` -> use `r.id.toString()`
 - `active_connections` is `dict[str, WebSocket]` — only ONE connection per username
+- Status presets: Disponible, Ocupado, Ausente, En llamada, No molestar
+- Buzz anim: CSS `@keyframes buzzShake` + `navigator.vibrate(400)` + square wave 200Hz
+- Cualquier cambio de esquema SQLite requiere borrar `decidr.db` y recrear
