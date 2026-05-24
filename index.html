@@ -62,6 +62,8 @@
         ::selection { background: rgba(90,159,188,0.2); }
         .settings-card { background: #f8fafb; border-radius: 12px; padding: 16px; border: 1px solid #eef2f6; }
         .logo-blend { mask-image: radial-gradient(circle at center, black 30%, transparent 72%); -webkit-mask-image: radial-gradient(circle at center, black 30%, transparent 72%); }
+        @keyframes buzzShake { 0%,100% { transform: translateX(0); } 10%,30%,50%,70%,90% { transform: translateX(-4px); } 20%,40%,60%,80% { transform: translateX(4px); } }
+        .buzz-anim { animation: buzzShake 0.6s ease-in-out 3; }
     </style>
 </head>
 <body class="h-screen flex font-sans text-gray-900 overflow-hidden bg-gray-100">
@@ -144,6 +146,7 @@
                 </div>
                 <div class="min-w-0">
                     <h1 class="font-bold leading-tight text-sm truncate cursor-pointer hover:opacity-80" id="roomTitle">General</h1>
+                    <p class="text-[9px] opacity-70 font-medium truncate -mt-0.5" id="roomUserStatus"></p>
                     <p class="text-[10px] opacity-80 font-medium" id="roomStatus">🔒 Cifrado</p>
                 </div>
                 <button id="closeChatBtn" onclick="closeCurrentChat()" class="w-7 h-7 rounded-full bg-white/15 hover:bg-red-400/50 flex items-center justify-center transition text-xs shrink-0 hidden" title="Cerrar chat">✕</button>
@@ -206,6 +209,7 @@
                 <div id="emojiPicker" class="hidden"></div>
             </div>
             <input id="input" type="text" class="flex-1 bg-gray-100 border border-gray-200 rounded-full px-4 py-2.5 outline-none text-base focus:bg-white focus:border-[#5a9fbc] transition" placeholder="Mensaje cifrado...">
+            <button id="buzzBtn" onclick="sendBuzz()" class="text-gray-500 text-xl px-1 hover:text-orange-500 transition hidden" title="Zumbar">📳</button>
             <button onclick="document.getElementById('fileInput').click()" class="text-gray-500 text-xl px-1 hover:text-gray-700 transition" title="Adjuntar archivo">📎</button>
             <input id="fileInput" type="file" class="hidden" onchange="handleFileSelect(event)" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,.mp3,.mp4,.mov">
             <button onclick="sendText()" class="bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white w-11 h-11 rounded-full flex items-center justify-center shadow-md hover:shadow-lg active:scale-95 transition shrink-0">➤</button>
@@ -344,6 +348,10 @@
             </div>
             <div class="flex" style="min-height: 380px;">
                 <div class="w-40 border-r border-gray-100 p-3 space-y-1 shrink-0 bg-gray-50/50">
+                    <div class="settings-tab" onclick="switchSettingsTab('status',this)">
+                        <span class="text-lg">💬</span>
+                        <span>Estado</span>
+                    </div>
                     <div class="settings-tab active" onclick="switchSettingsTab('appearance',this)">
                         <span class="text-lg">🎨</span>
                         <span>Apariencia</span>
@@ -354,6 +362,25 @@
                     </div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                    <!-- Status -->
+                    <div id="settingsStatus" class="hidden space-y-3">
+                        <div class="settings-card">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">💬 Mi estado</p>
+                            <div class="flex flex-wrap gap-1.5 mb-3" id="statusPresets">
+                                <button onclick="setStatusPreset('Disponible')" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-[#e8f4f8] hover:border-[#5a9fbc] transition">Disponible</button>
+                                <button onclick="setStatusPreset('Ocupado')" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-[#e8f4f8] hover:border-[#5a9fbc] transition">Ocupado</button>
+                                <button onclick="setStatusPreset('Ausente')" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-[#e8f4f8] hover:border-[#5a9fbc] transition">Ausente</button>
+                                <button onclick="setStatusPreset('En llamada')" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-[#e8f4f8] hover:border-[#5a9fbc] transition">En llamada</button>
+                                <button onclick="setStatusPreset('No molestar')" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-[#e8f4f8] hover:border-[#5a9fbc] transition">No molestar</button>
+                                <button onclick="setStatusPreset('')" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-red-50 hover:border-red-300 text-red-500 transition">✕ Sin estado</button>
+                            </div>
+                            <div class="flex gap-2">
+                                <input id="customStatus" type="text" class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" maxlength="60" placeholder="O escribí tu estado..." onkeydown="if(event.key==='Enter')saveCustomStatus()">
+                                <button onclick="saveCustomStatus()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white text-sm font-semibold hover:from-[#4a87a0] hover:to-[#6aa8c4] transition">Poner</button>
+                            </div>
+                            <p id="currentStatusDisplay" class="text-xs text-gray-400 mt-2 italic">Estado actual: —</p>
+                        </div>
+                    </div>
                     <!-- Appearance -->
                     <div id="settingsAppearance" class="space-y-5">
                         <div class="settings-card">
@@ -432,6 +459,10 @@
                                         <option value="none">Nadie</option>
                                     </select>
                                 </div>
+                                <label class="flex items-center justify-between text-sm">
+                                    <span>📳 Permitir zumbidos</span>
+                                    <input type="checkbox" id="privacyAllowBuzz" onchange="savePrivacySettings()" class="toggle">
+                                </label>
                             </div>
                         </div>
                         <div class="settings-card">
@@ -605,9 +636,11 @@
         function switchSettingsTab(tab,el){
             document.querySelectorAll('.settings-tab').forEach(t=>t.classList.remove('active'));
             el.classList.add('active');
+            document.getElementById('settingsStatus').classList.toggle('hidden',tab!=='status');
             document.getElementById('settingsAppearance').classList.toggle('hidden',tab!=='appearance');
             document.getElementById('settingsPrivacy').classList.toggle('hidden',tab!=='privacy');
             if(tab==='privacy')loadBlockedUsers();
+            if(tab==='status')loadStatusSettings();
         }
 
         // ─── Block ───
@@ -723,7 +756,9 @@
                     document.getElementById('privacyReadReceipts').checked=d.read_receipts!==false;
                     document.getElementById('privacyOnlineStatus').value=d.online_status||'all';
                     document.getElementById('privacyLastSeen').value=d.last_seen_visibility||'all';
+                    document.getElementById('privacyAllowBuzz').checked=d.allow_buzz!==false;
                     myPrivacySettings=d;
+                    if(d.status_text)document.getElementById('customStatus').value=d.status_text;
                 }
             }catch(e){}
         }
@@ -732,11 +767,42 @@
                 read_receipts:document.getElementById('privacyReadReceipts').checked,
                 online_status:document.getElementById('privacyOnlineStatus').value,
                 last_seen_visibility:document.getElementById('privacyLastSeen').value,
+                allow_buzz:document.getElementById('privacyAllowBuzz').checked,
             };
             myPrivacySettings=body;
             try{
                 await fetch('/privacy/settings',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});
             }catch(e){}
+        }
+        // ─── Status ───
+        async function loadStatusSettings(){
+            try{
+                const r=await fetch('/status',{headers:{'Authorization':'Bearer '+token}});
+                const d=await r.json();
+                if(r.ok){
+                    document.getElementById('currentStatusDisplay').textContent='Estado actual: '+(d.status_text||'—');
+                    document.getElementById('customStatus').value=d.status_text||'';
+                }
+            }catch(e){}
+        }
+        async function saveCustomStatus(){
+            const val=document.getElementById('customStatus').value.trim().slice(0,60);
+            try{
+                await fetch('/status',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({status_text:val})});
+                document.getElementById('currentStatusDisplay').textContent='Estado actual: '+(val||'—');
+                if(ws)ws.send(JSON.stringify({type:'set_status',status_text:val}));
+            }catch(e){}
+        }
+        function setStatusPreset(val){
+            document.getElementById('customStatus').value=val;
+            saveCustomStatus();
+        }
+        function updateUserStatusDisplay(name,statusText){
+            if(name===currentRoomName){
+                const el=document.getElementById('roomUserStatus');
+                if(statusText)el.textContent=statusText;
+                else el.textContent='';
+            }
         }
         function hideSettingsModal(){
             const box=document.querySelector('#settingsModal .modal-box');
@@ -825,12 +891,12 @@
         async function fetchRooms(){
             try{const r=await fetch('/rooms',{headers:{'Authorization':'Bearer '+token}});if(r.status===401){console.error('fetchRooms 401');invalidToken();return;}const d=await r.json();if(d.rooms){console.log('fetchRooms got',d.rooms.length,'rooms, currentRoom:',currentRoom);myRooms=d.rooms;renderRooms();if(myRooms.length>0&&currentRoom==='default_room'){console.log('switching to first room');switchRoom(myRooms[0].id,myRooms[0].name,null);}}else console.log('fetchRooms no d.rooms');}catch(e){console.error('fetchRooms error',e);}
         }
-        function renderRooms(){const list=document.getElementById('roomList');list.innerHTML='';myRooms.forEach(r=>{const div=document.createElement('div');div.className='room-item p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3 transition'+(r.id.toString()===currentRoom?' room-active':'');div.dataset.room=r.id;const uc=unreadCounts[r.id]||0;const badge=uc>0?`<span class="ml-auto bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 shrink-0">${uc>99?'99+':uc}</span>`:'';if(r.is_dm){const ku=knownUsers[r.name];const dotColor=ku&&ku.online?'bg-green-500':'bg-gray-300';const sub=ku&&ku.online?'En l\u00ednea':(ku&&ku.last_seen?'\u00dalt. vez '+new Date(ku.last_seen).toLocaleDateString():'DM');div.innerHTML=`<div class="relative w-11 h-11 shrink-0"><div class="w-11 h-11 bg-gradient-to-br from-[#7ab8d4] to-[#9acce4] rounded-xl flex items-center justify-center text-white text-lg shadow-sm">👤</div><span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${dotColor} ring-2 ring-white"></span></div><div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate text-gray-800">${escapeHtml(r.name)}</div><div class="text-xs text-gray-400">${sub}</div></div>${badge}`;}else{const initial=(r.name||'G')[0].toUpperCase();div.innerHTML=`<div class="w-11 h-11 bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] rounded-xl flex items-center justify-center text-white font-bold shrink-0 shadow-sm">${initial}</div><div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate text-gray-800">${escapeHtml(r.name)}</div><div class="text-xs text-gray-400">${r.member_count||1} miembros · 🔒</div></div>${badge}`;}div.onclick=()=>switchRoom(r.id,r.name,div);list.appendChild(div);});}
+        function renderRooms(){const list=document.getElementById('roomList');list.innerHTML='';myRooms.forEach(r=>{const div=document.createElement('div');div.className='room-item p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center gap-3 transition'+(r.id.toString()===currentRoom?' room-active':'');div.dataset.room=r.id;const uc=unreadCounts[r.id]||0;const badge=uc>0?`<span class="ml-auto bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 shrink-0">${uc>99?'99+':uc}</span>`:'';if(r.is_dm){const ku=knownUsers[r.name];const dotColor=ku&&ku.online?'bg-green-500':'bg-gray-300';let sub=ku&&ku.online?'En l\u00ednea':(ku&&ku.last_seen?'\u00dalt. vez '+new Date(ku.last_seen).toLocaleDateString():'DM');if(ku&&ku.status_text&&sub==='En l\u00ednea')sub=ku.status_text;div.innerHTML=`<div class="relative w-11 h-11 shrink-0"><div class="w-11 h-11 bg-gradient-to-br from-[#7ab8d4] to-[#9acce4] rounded-xl flex items-center justify-center text-white text-lg shadow-sm">👤</div><span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${dotColor} ring-2 ring-white"></span></div><div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate text-gray-800">${escapeHtml(r.name)}</div><div class="text-xs text-gray-400">${sub}</div></div>${badge}`;}else{const initial=(r.name||'G')[0].toUpperCase();div.innerHTML=`<div class="w-11 h-11 bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] rounded-xl flex items-center justify-center text-white font-bold shrink-0 shadow-sm">${initial}</div><div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate text-gray-800">${escapeHtml(r.name)}</div><div class="text-xs text-gray-400">${r.member_count||1} miembros · 🔒</div></div>${badge}`;}div.onclick=()=>switchRoom(r.id,r.name,div);list.appendChild(div);});}
         function showCreateRoomModal(){document.getElementById('createRoomModal').classList.remove('hidden');document.getElementById('roomError').classList.add('hidden');}
         function hideCreateRoomModal(){document.getElementById('createRoomModal').classList.add('hidden');}
         async function createRoom(){const name=document.getElementById('newRoomName').value.trim();if(!name){document.getElementById('roomError').textContent='Escribí un nombre';document.getElementById('roomError').classList.remove('hidden');return;}try{const r=await fetch('/rooms',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({name})});const d=await r.json();if(r.ok){document.getElementById('newRoomName').value='';hideCreateRoomModal();await fetchRooms();switchRoom(d.id,d.name,null);}else{document.getElementById('roomError').textContent=d.error;document.getElementById('roomError').classList.remove('hidden');}}catch(e){document.getElementById('roomError').textContent='Error';document.getElementById('roomError').classList.remove('hidden');}}
         async function closeCurrentChat(){const id=currentRoom;if(!id||!confirm('¿Cerrar este chat?'))return;try{const r=await fetch('/rooms/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(r.ok){delete unreadCounts[id];await fetchRooms();const first=myRooms[0];if(first)switchRoom(first.id,first.name,null);else{currentRoom='';currentRoomName='';document.getElementById('roomTitle').textContent='Sin chats';document.getElementById('closeChatBtn').classList.add('hidden');chat.innerHTML='<div class="system-msg italic">Sin chats disponibles</div>';renderRooms();updatePageTitle();}}else{alert(d.error||'Error');}}catch(e){alert('Error al cerrar chat');}}
-        function switchRoom(id,name,el,noClear){console.log('switchRoom called',id,name,'noClear',noClear);currentRoom=id.toString();currentRoomName=name||'General';if(!noClear)delete unreadCounts[currentRoom];renderRooms();updatePageTitle();document.querySelectorAll('.room-item').forEach(r=>r.classList.remove('room-active'));if(el)el.classList.add('room-active');else{document.querySelectorAll('.room-item').forEach(r=>{if(r.dataset.room===currentRoom)r.classList.add('room-active');});}const titleEl=document.getElementById('roomTitle');titleEl.textContent=currentRoomName;titleEl.className='font-bold leading-tight text-sm truncate cursor-pointer hover:opacity-80';titleEl.title='Ver perfil';const room=myRooms.find(r=>r.id.toString()===currentRoom);if(room&&room.is_dm){titleEl.onclick=function(){showOtherProfile(currentRoomName);};if(ws)ws.send(JSON.stringify({type:'get_user_status',target:currentRoomName}));}else{titleEl.onclick=null;}document.getElementById('closeChatBtn').classList.toggle('hidden',!id||id==='default_room');chat.innerHTML=`<div class="system-msg italic">🔒 ${currentRoomName}</div>`;hasRoomKey=false;roomKeyRequested=false;const existing=Crypto.getRoomKey(currentRoom);if(existing)hasRoomKey=true;requestRoomKey();if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'set_room',room:currentRoom}));updateRoomStatus();}
+        function switchRoom(id,name,el,noClear){console.log('switchRoom called',id,name,'noClear',noClear);currentRoom=id.toString();currentRoomName=name||'General';if(!noClear)delete unreadCounts[currentRoom];renderRooms();updatePageTitle();document.querySelectorAll('.room-item').forEach(r=>r.classList.remove('room-active'));if(el)el.classList.add('room-active');else{document.querySelectorAll('.room-item').forEach(r=>{if(r.dataset.room===currentRoom)r.classList.add('room-active');});}const titleEl=document.getElementById('roomTitle');titleEl.textContent=currentRoomName;titleEl.className='font-bold leading-tight text-sm truncate cursor-pointer hover:opacity-80';titleEl.title='Ver perfil';const room=myRooms.find(r=>r.id.toString()===currentRoom);const isDm=room&&room.is_dm;if(isDm){titleEl.onclick=function(){showOtherProfile(currentRoomName);};if(ws)ws.send(JSON.stringify({type:'get_user_status',target:currentRoomName}));const ku=knownUsers[currentRoomName];if(ku)document.getElementById('roomUserStatus').textContent=ku.status_text||'';else document.getElementById('roomUserStatus').textContent='';}else{titleEl.onclick=null;document.getElementById('roomUserStatus').textContent='';}document.getElementById('buzzBtn').classList.toggle('hidden',!isDm);document.getElementById('closeChatBtn').classList.toggle('hidden',!id||id==='default_room');chat.innerHTML=`<div class="system-msg italic">🔒 ${currentRoomName}</div>`;hasRoomKey=false;roomKeyRequested=false;const existing=Crypto.getRoomKey(currentRoom);if(existing)hasRoomKey=true;requestRoomKey();if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'set_room',room:currentRoom}));updateRoomStatus();}
         let searchTimeout=null;
         async function searchUsers(q){
             const el=document.getElementById('contactResults');
@@ -925,18 +991,21 @@
         let typingUsers={};
         function updateRoomStatus(){
             const el=document.getElementById('roomStatus');
+            const statusEl=document.getElementById('roomUserStatus');
             const typers=Object.keys(typingUsers).filter(u=>u!==clientId);
             if(typers.length>0){
                 const names=typers.map(u=>{const cu=connectedUsers.find(c=>c.id===u);return cu?cu.name:u;});
                 if(names.length===1)el.textContent='✏️ '+names[0]+' está escribiendo...';
                 else if(names.length===2)el.textContent='✏️ '+names[0]+' y '+names[1]+' están escribiendo...';
                 else el.textContent='✏️ Varias personas están escribiendo...';
+                if(statusEl)statusEl.textContent='';
                 return;
             }
             // Check if current room is a DM
             const room=myRooms.find(r=>r.id.toString()===currentRoom);
             if(room&&room.is_dm){
                 const other=knownUsers[currentRoomName];
+                if(statusEl)statusEl.textContent=other&&other.status_text?other.status_text:'';
                 if(other&&other.online&&other.online_status!=='none'){
                     el.innerHTML='<span class="text-green-400">\u25cf</span> En l\u00ednea';
                     return;
@@ -945,7 +1014,7 @@
                     el.textContent='\u00dalt. vez '+(new Date().toLocaleDateString()===new Date(other.last_seen).toLocaleDateString()?'hoy':new Date(other.last_seen).toLocaleDateString())+' a las '+new Date(other.last_seen).getHours().toString().padStart(2,'0')+':'+new Date(other.last_seen).getMinutes().toString().padStart(2,'0');
                     return;
                 }
-            }
+            }else if(statusEl)statusEl.textContent='';
             el.textContent='\ud83d\udd12 Cifrado';
         }
         function updateTypingIndicator(){
@@ -967,7 +1036,7 @@
                 console.log('handleMessage type:',d.type,'room:',d.room,'cid:',d.client_id,'myId:',clientId,'currRoom:',currentRoom);
                 if(d.type==="user_list"){
                     connectedUsers=d.users;
-                    d.users.forEach(u=>{knownUsers[u.id]={name:u.name,online:true,last_seen:null,read_receipts:u.read_receipts,online_status:u.online_status,last_seen_visibility:u.last_seen_visibility};});
+                    d.users.forEach(u=>{knownUsers[u.id]={name:u.name,online:true,last_seen:null,read_receipts:u.read_receipts,online_status:u.online_status,last_seen_visibility:u.last_seen_visibility,status_text:u.status_text,allow_buzz:u.allow_buzz};});
                     updatePeerKeys();updateOnlineUsers();requestRoomKey();
                 }
                 else if(d.type==="incoming_call")showIncomingCall(d);
@@ -993,27 +1062,36 @@
                 }
                 else if(d.type==="user_online"){
                     if(d.username!==clientId){
-                        if(knownUsers[d.username]){knownUsers[d.username].online=true;knownUsers[d.username].read_receipts=d.read_receipts;knownUsers[d.username].online_status=d.online_status;knownUsers[d.username].last_seen_visibility=d.last_seen_visibility;}
-                        else knownUsers[d.username]={name:d.username,online:true,last_seen:null,read_receipts:d.read_receipts,online_status:d.online_status,last_seen_visibility:d.last_seen_visibility};
+                        if(knownUsers[d.username]){knownUsers[d.username].online=true;knownUsers[d.username].read_receipts=d.read_receipts;knownUsers[d.username].online_status=d.online_status;knownUsers[d.username].last_seen_visibility=d.last_seen_visibility;knownUsers[d.username].status_text=d.status_text;knownUsers[d.username].allow_buzz=d.allow_buzz;}
+                        else knownUsers[d.username]={name:d.username,online:true,last_seen:null,read_receipts:d.read_receipts,online_status:d.online_status,last_seen_visibility:d.last_seen_visibility,status_text:d.status_text,allow_buzz:d.allow_buzz};
                         updateRoomStatus();
                     }
                 }
                 else if(d.type==="user_offline"){
                     if(d.username!==clientId){
-                        if(knownUsers[d.username]){knownUsers[d.username].online=false;knownUsers[d.username].last_seen=d.last_seen;}
-                        else knownUsers[d.username]={name:d.username,online:false,last_seen:d.last_seen,read_receipts:true,online_status:'all',last_seen_visibility:'all'};
+                        if(knownUsers[d.username]){knownUsers[d.username].online=false;knownUsers[d.username].last_seen=d.last_seen;knownUsers[d.username].status_text=d.status_text!==undefined?d.status_text:knownUsers[d.username].status_text;}
+                        else knownUsers[d.username]={name:d.username,online:false,last_seen:d.last_seen,read_receipts:true,online_status:'all',last_seen_visibility:'all',status_text:d.status_text||null,allow_buzz:true};
                         updateRoomStatus();
                     }
                 }
                 else if(d.type==="user_status"){
                     if(d.username){
-                        if(!knownUsers[d.username])knownUsers[d.username]={name:d.username,read_receipts:true,online_status:'all',last_seen_visibility:'all'};
+                        if(!knownUsers[d.username])knownUsers[d.username]={name:d.username,read_receipts:true,online_status:'all',last_seen_visibility:'all',status_text:null,allow_buzz:true};
                         if(d.online!==undefined)knownUsers[d.username].online=d.online;
                         if(d.last_seen)knownUsers[d.username].last_seen=d.last_seen;
                         if(d.last_seen_visibility)knownUsers[d.username].last_seen_visibility=d.last_seen_visibility;
                         if(d.online_status)knownUsers[d.username].online_status=d.online_status;
+                        if(d.status_text!==undefined)knownUsers[d.username].status_text=d.status_text;
+                        if(d.allow_buzz!==undefined)knownUsers[d.username].allow_buzz=d.allow_buzz;
                         updateRoomStatus();
                     }
+                }
+                else if(d.type==="buzz"){
+                    handleBuzz(d);
+                }
+                else if(d.type==="status_updated"){
+                    if(knownUsers[clientId])knownUsers[clientId].status_text=d.status_text;
+                    updateUserStatusDisplay(currentRoomName,d.status_text);
                 }
                 else {
                     const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result";
@@ -1138,7 +1216,7 @@
         let msgCounter=0;
         let replyToMsg=[];
         const messageStatuses={};
-        let myPrivacySettings={read_receipts:true,online_status:'all',last_seen_visibility:'all'};
+        let myPrivacySettings={read_receipts:true,online_status:'all',last_seen_visibility:'all',allow_buzz:true};
         const knownUsers={};
         function nextMsgId(){return Date.now().toString(36)+'-'+(++msgCounter).toString(36);}
 
@@ -1183,6 +1261,30 @@
             }catch(e){}document.getElementById('input').value="";
         }
         document.getElementById('input').addEventListener("keypress",e=>{if(e.key==="Enter")sendText();});
+        // ─── Buzz ───
+        function sendBuzz(){
+            if(!currentRoomName||!ws||ws.readyState!==WebSocket.OPEN)return;
+            ws.send(JSON.stringify({type:'buzz',target:currentRoomName}));
+        }
+        function handleBuzz(d){
+            if(d.from_name){
+                const chat=document.getElementById('chat');
+                chat.classList.remove('buzz-anim');
+                void chat.offsetWidth;
+                chat.classList.add('buzz-anim');
+                setTimeout(()=>chat.classList.remove('buzz-anim'),2000);
+                try{navigator.vibrate(400);}catch(e){}
+                try{
+                    const ac=new (window.AudioContext||window.webkitAudioContext)();
+                    const o=ac.createOscillator();const g=ac.createGain();
+                    o.connect(g);g.connect(ac.destination);
+                    o.frequency.value=200;o.type='square';
+                    g.gain.setValueAtTime(0.1,ac.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.3);
+                    o.start(ac.currentTime);o.stop(ac.currentTime+0.3);
+                }catch(e){}
+            }
+        }
         // ─── Typing indicator ───
         let typingTimer=null;
         const TYPING_INTERVAL=2000;

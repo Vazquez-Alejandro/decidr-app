@@ -34,6 +34,8 @@ class UserDB(Base):
     read_receipts = Column(Boolean, default=True)
     online_status = Column(String, default='all')
     last_seen_visibility = Column(String, default='all')
+    status_text = Column(String, nullable=True)
+    allow_buzz = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

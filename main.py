@@ -1116,6 +1116,8 @@ async def get_privacy_settings(req: Request):
             "read_receipts": u.read_receipts if u.read_receipts is not None else True,
             "online_status": u.online_status or 'all',
             "last_seen_visibility": u.last_seen_visibility or 'all',
+            "allow_buzz": u.allow_buzz if u.allow_buzz is not None else True,
+            "status_text": u.status_text or None,
         }
     finally:
         db.close()
@@ -1139,8 +1141,45 @@ async def update_privacy_settings(req: Request):
             u.online_status = body["online_status"]
         if "last_seen_visibility" in body and body["last_seen_visibility"] in ("all", "contacts", "none"):
             u.last_seen_visibility = body["last_seen_visibility"]
+        if "allow_buzz" in body:
+            u.allow_buzz = bool(body["allow_buzz"])
+        if "status_text" in body:
+            u.status_text = (body["status_text"] or "").strip()[:60] or None
         db.commit()
         return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.put("/status")
+async def update_status(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    new_status = (body.get("status_text") or "").strip()[:60]
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if u:
+            u.status_text = new_status or None
+            db.commit()
+        return {"ok": True, "status_text": new_status or None}
+    finally:
+        db.close()
+
+
+@app.get("/status")
+async def get_status(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        return {"status_text": u.status_text if u else None, "allow_buzz": u.allow_buzz if u else True}
     finally:
         db.close()
 
@@ -1179,6 +1218,8 @@ class ConnectionManager:
                 "read_receipts": user_db.read_receipts if user_db else True,
                 "online_status": user_db.online_status if user_db else 'all',
                 "last_seen_visibility": user_db.last_seen_visibility if user_db else 'all',
+                "status_text": user_db.status_text if user_db else None,
+                "allow_buzz": user_db.allow_buzz if user_db else True,
             })
         finally:
             db2.close()
@@ -1252,6 +1293,8 @@ async def broadcast_user_list():
                 "read_receipts": user.read_receipts if user else True,
                 "online_status": user.online_status if user else 'all',
                 "last_seen_visibility": user.last_seen_visibility if user else 'all',
+                "status_text": user.status_text if user else None,
+                "allow_buzz": user.allow_buzz if user else True,
             })
         await manager.broadcast({"type": "user_list", "users": users})
     finally:
@@ -1543,7 +1586,50 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             reply["online"] = online
                         if can_see_last_seen and user.last_seen:
                             reply["last_seen"] = user.last_seen.isoformat()
+                        if user.status_text:
+                            reply["status_text"] = user.status_text
+                        reply["allow_buzz"] = user.allow_buzz if user.allow_buzz is not None else True
                         await manager.send_to(client_id, reply)
+
+            elif msg_type == "set_status":
+                new_status = (data.get("status_text") or "").strip()[:60]
+                try:
+                    db.query(UserDB).filter(UserDB.username == client_id).update({"status_text": new_status or None})
+                    db.commit()
+                except Exception:
+                    pass
+                await manager.send_to(client_id, {"type": "status_updated", "status_text": new_status or None})
+                await broadcast_user_list()
+
+            elif msg_type == "buzz":
+                target = data.get("target")
+                sender_name = manager.user_names.get(client_id, client_id)
+                if target:
+                    target_user = db.query(UserDB).filter(UserDB.username == target).first()
+                    allow = target_user.allow_buzz if target_user else True
+                    if target in manager.active_connections and allow:
+                        await manager.send_to(target, {
+                            "type": "buzz",
+                            "from": client_id,
+                            "from_name": sender_name
+                        })
+                        await manager.send_to(client_id, {
+                            "type": "system",
+                            "content": f"📳 Zumbido enviado a {target}"
+                        })
+                    else:
+                        await manager.send_to(client_id, {
+                            "type": "system",
+                            "content": "📳 No se pudo enviar el zumbido"
+                        })
+
+            elif msg_type == "set_allow_buzz":
+                allow = data.get("allow_buzz", True)
+                try:
+                    db.query(UserDB).filter(UserDB.username == client_id).update({"allow_buzz": bool(allow)})
+                    db.commit()
+                except Exception:
+                    pass
 
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")
@@ -1853,7 +1939,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         await manager.broadcast({
             "type": "user_offline",
             "username": client_id,
-            "last_seen": now_str
+            "last_seen": now_str,
+            "status_text": None,
+            "allow_buzz": True,
         })
     finally:
         db.close()
