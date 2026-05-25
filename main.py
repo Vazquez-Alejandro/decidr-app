@@ -1633,29 +1633,42 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     db_msg_id = db_msg.id
                 except Exception as e:
                     print(f"DB save error: {e}")
-                # Broadcast to all (happens regardless of DB success)
-                try:
-                    sender_name = manager.user_names.get(client_id, client_id)
-                    chat_msg = {
-                        "type": "chat",
-                        "sender": sender_name,
-                        "content": content,
-                        "nonce": nonce,
-                        "client_id": client_id,
-                        "room": room,
-                        "msg_id": msg_id,
-                        "message_id": db_msg_id,
-                        "reply_to": reply_to,
-                        "ephemeral": data.get("ephemeral"),
-                        "status": "sent"
-                    }
-                    for cid, conn in manager.active_connections.items():
+                    # Broadcast to all (happens regardless of DB success)
+                    try:
+                        sender_name = manager.user_names.get(client_id, client_id)
+                        # Check who blocked the sender
+                        blocked_by = set()
                         try:
-                            await conn.send_json(chat_msg)
+                            sender_db = db.query(UserDB).filter(UserDB.username == client_id).first()
+                            if sender_db:
+                                blocks = db.query(BlockedUserDB).filter(BlockedUserDB.blocked_id == sender_db.id).all()
+                                blocked_by = {b.user_id for b in blocks}
                         except Exception:
                             pass
-                except Exception as e:
-                    print(f"Broadcast error: {e}")
+                        chat_msg = {
+                            "type": "chat",
+                            "sender": sender_name,
+                            "content": content,
+                            "nonce": nonce,
+                            "client_id": client_id,
+                            "room": room,
+                            "msg_id": msg_id,
+                            "message_id": db_msg_id,
+                            "reply_to": reply_to,
+                            "ephemeral": data.get("ephemeral"),
+                            "status": "sent"
+                        }
+                        for cid, conn in manager.active_connections.items():
+                            try:
+                                if cid != client_id:
+                                    cid_user = db.query(UserDB).filter(UserDB.username == cid).first()
+                                    if cid_user and cid_user.id in blocked_by:
+                                        continue
+                                await conn.send_json(chat_msg)
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        print(f"Broadcast error: {e}")
                 # Send push notifications to room members not viewing this room
                 try:
                     room_members = db.query(RoomMemberDB).filter(
