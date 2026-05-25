@@ -1031,6 +1031,42 @@ async def mark_file_viewed(file_id: int, req: Request):
         db.close()
 
 
+@app.get("/rooms/{room_id}/search")
+async def search_room_messages(room_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    q = req.query_params.get("q", "").strip()
+    if not q:
+        return {"messages": []}
+    db = SessionLocal()
+    try:
+        chat = db.query(ChatDB).filter(ChatDB.name == str(room_id)).first()
+        if not chat:
+            return {"messages": []}
+        messages = db.query(MessageDB).filter(
+            MessageDB.chat_id == chat.id,
+            MessageDB.deleted == False,
+            MessageDB.content.ilike(f"%{q}%")
+        ).order_by(MessageDB.timestamp.desc()).limit(30).all()
+        result = []
+        for m in messages:
+            sender = db.query(UserDB).filter(UserDB.id == m.sender_id).first()
+            result.append({
+                "id": m.id,
+                "content": m.content,
+                "nonce": m.nonce,
+                "sender": sender.username if sender else "desconocido",
+                "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                "is_game_result": m.is_game_result,
+                "edited": m.edited,
+            })
+        return {"messages": result}
+    finally:
+        db.close()
+
+
 # ─── Message edit/delete ────────────────────────────────────────────
 @app.put("/messages/{message_id}")
 async def edit_message(message_id: int, req: Request):

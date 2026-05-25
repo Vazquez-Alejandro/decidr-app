@@ -202,6 +202,7 @@
                 <button onclick="toggleScheduleModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Programar">📅</button>
                 <button onclick="showPaymentModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Pedir pago">💰</button>
                 <button onclick="togglePollModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Encuesta">📊</button>
+                <button onclick="toggleSearch()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Buscar">🔍</button>
                 <div class="relative"><button onclick="toggleCallPicker(false)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Llamada de voz">📞</button></div>
                 <div class="relative">
                     <button onclick="toggleCallPicker(true)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Videollamada">📹</button>
@@ -217,6 +218,13 @@
                 </div>
             </div>
         </nav>
+
+        <div id="searchBar" class="hidden bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-2">
+            <input id="searchInput" type="text" class="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-[#5a9fbc]" placeholder="Buscar mensajes..." onkeydown="if(event.key==='Enter')doSearch()">
+            <button onclick="doSearch()" class="text-sm bg-[#5a9fbc] text-white px-3 py-1.5 rounded-lg">🔍</button>
+            <button onclick="toggleSearch()" class="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+        </div>
+        <div id="searchResults" class="hidden bg-gray-50 border-b border-gray-200 max-h-40 overflow-y-auto"></div>
 
         <main id="chat" class="flex-1 overflow-y-auto p-4 flex flex-col chat-bg space-y-1">
             <div class="system-msg italic">🔒 Conectando...</div>
@@ -2008,6 +2016,36 @@
             }else{btn.classList.add('hidden');}
         }
         function formatEphemeral(s){if(!s)return'';return s>=3600?Math.floor(s/3600)+'h':s>=60?Math.floor(s/60)+'m':s+'s';}
+
+        // ─── Búsqueda ───
+        function toggleSearch(){
+            const bar=document.getElementById('searchBar');
+            const results=document.getElementById('searchResults');
+            bar.classList.toggle('hidden');
+            if(!bar.classList.contains('hidden')){document.getElementById('searchInput').focus();document.getElementById('searchInput').value='';results.classList.add('hidden');results.innerHTML='';}else{results.classList.add('hidden');results.innerHTML='';}
+        }
+        async function doSearch(){
+            const q=document.getElementById('searchInput').value.trim();
+            if(!q||!currentRoom)return;
+            const results=document.getElementById('searchResults');
+            results.innerHTML='<div class="text-center text-gray-400 text-xs py-3">🔍 Buscando...</div>';
+            results.classList.remove('hidden');
+            try{
+                const r=await fetch('/rooms/'+currentRoom+'/search?q='+encodeURIComponent(q),{headers:{'Authorization':'Bearer '+token}});
+                const data=await r.json();
+                if(!data.messages||data.messages.length===0){results.innerHTML='<div class="text-center text-gray-400 text-xs py-3">Sin resultados</div>';return;}
+                results.innerHTML=data.messages.map(m=>{
+                    const sender=escapeHtml(m.sender);
+                    const preview=escapeHtml(m.content.slice(0,80));
+                    return `<div class="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm border-b border-gray-100" onclick="jumpToMessage(${m.id})"><span class="font-semibold text-[#5a9fbc] text-[10px] shrink-0">${sender}</span><span class="truncate text-gray-600">${preview}</span></div>`;
+                }).join('');
+            }catch(e){results.innerHTML='<div class="text-center text-red-400 text-xs py-3">Error</div>';}
+        }
+        function jumpToMessage(msgId){
+            const el=chat.querySelector(`[data-message-id="${msgId}"]`);
+            if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.transition='background .5s';el.style.background='rgba(90,159,188,.15)';setTimeout(()=>el.style.background='',1500);}
+            toggleSearch();
+        }
         document.addEventListener('click',e=>{const p=document.getElementById('emojiPicker'),b=document.getElementById('emojiBtn');if(!p.classList.contains('hidden')&&!p.contains(e.target)&&!b?.contains(e.target))p.classList.add('hidden');});
 
         // ─── Games ───
