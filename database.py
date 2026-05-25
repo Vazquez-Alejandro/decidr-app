@@ -163,6 +163,18 @@ class PollVoteDB(Base):
     user = relationship("UserDB")
 
 
+class ReminderDB(Base):
+    __tablename__ = "reminders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    room = Column(String, nullable=False)
+    content = Column(String, nullable=False)
+    remind_at = Column(DateTime, nullable=False)
+    done = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    user = relationship("UserDB")
+
+
 class PushSubscriptionDB(Base):
     __tablename__ = "push_subscriptions"
     id = Column(Integer, primary_key=True, index=True)

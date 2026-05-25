@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PollDB, PollOptionDB, PollVoteDB, PushSubscriptionDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PollDB, PollOptionDB, PollVoteDB, ReminderDB, PushSubscriptionDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -1302,6 +1302,31 @@ async def broadcast_user_list():
 
 
 # ─── Programación de mensajes ─────────────────────────────────────
+async def reminder_checker():
+    while True:
+        try:
+            db = SessionLocal()
+            now = datetime.datetime.utcnow()
+            due = db.query(ReminderDB).filter(
+                ReminderDB.done == False,
+                ReminderDB.remind_at <= now
+            ).all()
+            for r in due:
+                user = db.query(UserDB).filter(UserDB.id == r.user_id).first()
+                if user:
+                    await manager.send_to(user.username, {
+                        "type": "reminder_fired",
+                        "content": r.content,
+                        "room": r.room
+                    })
+                r.done = True
+                db.commit()
+            db.close()
+        except Exception:
+            pass
+        await asyncio.sleep(10)
+
+
 async def scheduled_message_checker():
     while True:
         try:
@@ -1332,6 +1357,7 @@ async def scheduled_message_checker():
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(scheduled_message_checker())
+    asyncio.create_task(reminder_checker())
 
 
 # ─── Gestión de juegos ─────────────────────────────────────────────
@@ -1751,6 +1777,23 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     "options": opt_list,
                     "room": room,
                 })
+
+            elif msg_type == "create_reminder":
+                content = data.get("content", "")
+                minutes = data.get("minutes", 10)
+                room = data.get("room", current_room)
+                user = db.query(UserDB).filter(UserDB.username == client_id).first()
+                if user and content:
+                    remind_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=minutes)
+                    rem = ReminderDB(user_id=user.id, room=room, content=content, remind_at=remind_at)
+                    db.add(rem)
+                    db.commit()
+                    await websocket.send_json({
+                        "type": "reminder_set",
+                        "content": content,
+                        "minutes": minutes,
+                        "remind_at": remind_at.isoformat()
+                    })
 
             elif msg_type == "set_room":
                 room = data.get("room", "default_room")
