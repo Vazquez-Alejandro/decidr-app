@@ -81,6 +81,20 @@
         .reminder-picker button:hover { background:#e2e8f0; }
         .reminder-picker input { border:1px solid #e2e8f0; border-radius:10px; padding:8px 12px; font-size:13px; outline:none; width:140px; }
         .reminder-picker input:focus { border-color:var(--primary); }
+        .sticker-btn { background:none; border:none; font-size:20px; cursor:pointer; padding:6px; border-radius:50%; transition:all .15s; line-height:1; }
+        .sticker-btn:hover { background:#e2e8f0; }
+        .sticker-modal { position:fixed; bottom:0; left:0; right:0; background:#fff; border-radius:20px 20px 0 0; box-shadow:0 -4px 30px rgba(0,0,0,.12); z-index:900; max-height:340px; display:flex; flex-direction:column; transition:transform .25s; }
+        .sticker-modal.hidden { transform:translateY(100%); pointer-events:none; }
+        .sticker-tabs { display:flex; gap:4px; padding:10px 16px 0; overflow-x:auto; border-bottom:1px solid #e2e8f0; }
+        .sticker-tabs button { flex-shrink:0; background:none; border:none; padding:8px 14px; font-size:13px; cursor:pointer; border-radius:10px 10px 0 0; color:#64748b; font-weight:500; transition:all .15s; }
+        .sticker-tabs button.active { background:#f1f5f9; color:#1e293b; font-weight:600; }
+        .sticker-grid { display:flex; flex-wrap:wrap; gap:8px; padding:16px; overflow-y:auto; justify-content:center; }
+        .sticker-grid button { background:none; border:none; font-size:40px; cursor:pointer; padding:6px; border-radius:12px; transition:all .15s; width:64px; height:64px; display:flex; align-items:center; justify-content:center; }
+        .sticker-grid button:hover { background:#f1f5f9; transform:scale(1.1); }
+        .sticker-grid img { width:56px; height:56px; object-fit:contain; }
+        .bubble-sticker { background:transparent !important; box-shadow:none !important; padding:4px !important; }
+        .bubble-sticker .sticker-img { font-size:80px; line-height:1; display:block; text-align:center; }
+        .bubble-sticker .sticker-img img { width:120px; height:120px; object-fit:contain; }
     </style>
 </head>
 <body class="h-screen flex font-sans text-gray-900 overflow-hidden bg-gray-100">
@@ -230,6 +244,7 @@
             <button id="buzzBtn" onclick="sendBuzz()" class="text-gray-500 text-xl px-1 hover:text-orange-500 transition hidden" title="Zumbar">📳</button>
             <button onclick="document.getElementById('fileInput').click()" class="text-gray-500 text-xl px-1 hover:text-gray-700 transition" title="Adjuntar archivo">📎</button>
             <input id="fileInput" type="file" class="hidden" onchange="handleFileSelect(event)" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar">
+            <button onclick="toggleStickerModal()" class="sticker-btn" title="Stickers">😍</button>
             <button onclick="sendText()" class="bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white w-11 h-11 rounded-full flex items-center justify-center shadow-md hover:shadow-lg active:scale-95 transition shrink-0">➤</button>
             <span class="text-[10px] text-green-600 absolute -top-2.5 right-4 bg-white px-2.5 rounded-t-md border border-gray-200 border-b-0 font-medium">🔒 E2EE</span>
         </footer>
@@ -590,6 +605,16 @@
                 <button onclick="sendPoll()" class="w-full py-3 rounded-xl bg-gradient-to-r from-[#5a9fbc] to-[#7ab8d4] text-white font-semibold text-sm hover:from-[#4a87a0] hover:to-[#6aa8c4] transition shadow-sm">Crear encuesta</button>
             </div>
         </div>
+    </div>
+
+    <!-- Sticker picker -->
+    <div id="stickerModal" class="sticker-modal hidden">
+        <div class="flex items-center justify-between px-4 pt-3 pb-1">
+            <span class="font-bold text-sm">Stickers</span>
+            <button onclick="toggleStickerModal()" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+        </div>
+        <div class="sticker-tabs" id="stickerTabs"></div>
+        <div class="sticker-grid" id="stickerGrid"></div>
     </div>
 
     <!-- Message info popup -->
@@ -1178,8 +1203,11 @@
                 else if(d.type==="poll_update"){
                     if(d.room===currentRoom)updatePoll(d);
                 }
+                else if(d.type==="sticker"){
+                    if(d.room===currentRoom)renderSticker(d);
+                }
                 else {
-                    const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result"||d.type==="poll";
+                    const isMsg = d.type==="chat"||d.type==="scheduled"||d.type==="payment"||d.type==="game_result"||d.type==="poll"||d.type==="sticker";
                     if(isMsg && d.room && d.client_id!==clientId){
                         if(d.room!==currentRoom){
                             console.log('notify: FIRING for room',d.room,'from',d.client_id,'myId',clientId);
@@ -1825,6 +1853,61 @@
         function votePoll(pollId,optionId){
             if(!ws||ws.readyState!==WebSocket.OPEN)return;
             ws.send(JSON.stringify({type:'vote_poll',poll_id:pollId,option_id:optionId,room:currentRoom}));
+        }
+
+        // ─── Stickers ───
+        const stickerPacks={
+            'caritas':{label:'😀',items:['😀','😂','😍','🥰','😭','😤','🥶','🤯','😎','🤩','😈','🤗','🥺','😅','😱','🤔','🙄','😴','🤤']},
+            'manos':{label:'👋',items:['👍','👎','👊','✊','🤞','🖕','✌️','🤟','🤲','👏','🙌','💪','🫶','🤝','✋','👆']},
+            'corazones':{label:'❤️',items:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💕','💖','💗','💔','❤️‍🔥','💝','🩷']},
+            'animales':{label:'🐱',items:['🐱','🐶','🐼','🐸','🦊','🐰','🐯','🦁','🐻','🐨','🐷','🐮','🐔','🐧','🦄','🐲']},
+            'comida':{label:'🍕',items:['🍕','🍔','🌮','🍦','🍩','🍪','🍫','🍭','🧁','🎂','🍿','🥤','🧃','🍺','🍷','☕']},
+            'objetos':{label:'🎯',items:['🎯','🎉','🎊','🎈','💎','🔮','🧿','🌟','⭐','🌈','🔥','💀','⚡','🎵','🎶','💯']},
+            'banderas':{label:'🚩',items:['🚩','🏁','🇦🇷','🇧🇷','🇨🇱','🇨🇴','🇲🇽','🇪🇸','🇺🇸','🇬🇧','🇫🇷','🇮🇹','🇩🇪','🇯🇵','🇨🇳','🇰🇷']},
+        };
+        let activeStickerPack=Object.keys(stickerPacks)[0];
+        function initStickerModal(){
+            const tabs=document.getElementById('stickerTabs');
+            const grid=document.getElementById('stickerGrid');
+            if(!tabs||tabs.children.length>0)return;
+            Object.entries(stickerPacks).forEach(([key,p])=>{
+                const btn=document.createElement('button');
+                btn.textContent=p.label;btn.dataset.pack=key;
+                btn.onclick=()=>showStickerPack(key);
+                if(key===activeStickerPack)btn.classList.add('active');
+                tabs.appendChild(btn);
+            });
+            showStickerPack(activeStickerPack);
+        }
+        function showStickerPack(key){
+            activeStickerPack=key;
+            document.querySelectorAll('#stickerTabs button').forEach(b=>b.classList.toggle('active',b.dataset.pack===key));
+            const grid=document.getElementById('stickerGrid');grid.innerHTML='';
+            stickerPacks[key].items.forEach(s=>{
+                const btn=document.createElement('button');
+                btn.textContent=s;
+                btn.onclick=()=>sendSticker(s,key);
+                grid.appendChild(btn);
+            });
+        }
+        function toggleStickerModal(){
+            const m=document.getElementById('stickerModal');
+            m.classList.toggle('hidden');
+            if(!m.classList.contains('hidden'))initStickerModal();
+        }
+        function sendSticker(stickerId,pack){
+            if(!ws||ws.readyState!==WebSocket.OPEN)return;
+            ws.send(JSON.stringify({type:'sticker',sticker_id:stickerId,pack,room:currentRoom}));
+            document.getElementById('stickerModal').classList.add('hidden');
+        }
+        function renderSticker(d){
+            const div=document.createElement('div');div.className='bubble bubble-sticker self-start';
+            const isMe=d.sender===clientId;
+            if(isMe)div.className='bubble bubble-sticker self-end';
+            const s=d.sticker_id;
+            const isEmoji=s.match(/\p{Emoji}/u);
+            div.innerHTML=isEmoji?`<span class="sticker-img text-center">${s}</span>`:`<span class="sticker-img text-center"><img src="${escapeHtml(s)}" alt="sticker"></span>`;
+            chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
         }
         function showPaymentModal(){document.getElementById('paymentModal').classList.remove('hidden');document.getElementById('payAmount').value='';document.getElementById('payConcept').value='';document.getElementById('payAmount').focus();}
         function hidePaymentModal(){document.getElementById('paymentModal').classList.add('hidden');}

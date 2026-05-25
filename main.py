@@ -1778,6 +1778,18 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     "room": room,
                 })
 
+            elif msg_type == "sticker":
+                room = data.get("room", current_room)
+                sticker_id = data.get("sticker_id", "")
+                pack = data.get("pack", "")
+                await manager.broadcast({
+                    "type": "sticker",
+                    "sticker_id": sticker_id,
+                    "pack": pack,
+                    "sender": client_id,
+                    "room": room,
+                })
+
             elif msg_type == "create_reminder":
                 content = data.get("content", "")
                 minutes = data.get("minutes", 10)
