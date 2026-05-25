@@ -221,6 +221,7 @@ async def create_room(req: Request):
     name = body.get("name", "").strip()
     if not name or len(name) > 50:
         return JSONResponse({"error": "Nombre inválido"}, status_code=400)
+    is_channel = body.get("is_channel", False)
     db = SessionLocal()
     try:
         existing_room = db.query(RoomDB).filter(RoomDB.name == name).first()
@@ -233,15 +234,15 @@ async def create_room(req: Request):
                 member = RoomMemberDB(room_id=existing_room.id, user_id=user["id"])
                 db.add(member)
                 db.commit()
-            return {"id": existing_room.id, "name": existing_room.name}
-        room = RoomDB(name=name, creator_id=user["id"])
+            return {"id": existing_room.id, "name": existing_room.name, "is_channel": existing_room.is_channel}
+        room = RoomDB(name=name, creator_id=user["id"], is_channel=is_channel)
         db.add(room)
         db.commit()
         db.refresh(room)
         member = RoomMemberDB(room_id=room.id, user_id=user["id"], is_admin=True)
         db.add(member)
         db.commit()
-        return {"id": room.id, "name": room.name, "created_at": room.created_at.isoformat()}
+        return {"id": room.id, "name": room.name, "is_channel": room.is_channel, "created_at": room.created_at.isoformat()}
     finally:
         db.close()
 
@@ -261,6 +262,10 @@ async def list_rooms(req: Request):
         for r in rooms:
             member_count = db.query(RoomMemberDB).filter(RoomMemberDB.room_id == r.id).count()
             is_dm = r.name.startswith("__dm__") if r.name else False
+            membership = db.query(RoomMemberDB).filter(
+                RoomMemberDB.room_id == r.id, RoomMemberDB.user_id == user["id"]
+            ).first()
+            user_is_admin = membership.is_admin if membership else False
             display_name = r.name
             if is_dm:
                 members = db.query(RoomMemberDB).filter(RoomMemberDB.room_id == r.id).all()
@@ -275,6 +280,8 @@ async def list_rooms(req: Request):
                 "name": display_name,
                 "member_count": member_count,
                 "is_dm": is_dm,
+                "is_channel": r.is_channel,
+                "is_admin": user_is_admin,
                 "created_at": r.created_at.isoformat()
             })
         return {"rooms": result}
@@ -1587,6 +1594,26 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 reply_to = data.get("reply_to")
                 manager.client_rooms[client_id] = room
                 current_room = room
+                # Channel check: only admins can send
+                try:
+                    room_id_int = int(room)
+                    room_db = db.query(RoomDB).filter(RoomDB.id == room_id_int).first()
+                    if room_db and room_db.is_channel:
+                        user_db = db.query(UserDB).filter(UserDB.username == client_id).first()
+                        if user_db:
+                            is_admin = db.query(RoomMemberDB).filter(
+                                RoomMemberDB.room_id == room_db.id,
+                                RoomMemberDB.user_id == user_db.id,
+                                RoomMemberDB.is_admin == True
+                            ).first()
+                            if not is_admin:
+                                try:
+                                    await websocket.send_json({"type":"error","message":"Solo admins pueden enviar en este canal"})
+                                except Exception:
+                                    pass
+                                continue
+                except Exception as e:
+                    print(f"Channel check error: {e}")
                 # Save to DB (best effort)
                 db_msg_id = None
                 try:

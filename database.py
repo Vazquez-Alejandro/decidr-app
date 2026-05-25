@@ -82,6 +82,7 @@ class RoomDB(Base):
     name = Column(String, nullable=False)
     creator_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    is_channel = Column(Boolean, default=False)
     creator = relationship("UserDB")
 
 
