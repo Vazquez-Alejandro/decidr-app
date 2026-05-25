@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PollDB, PollOptionDB, PollVoteDB, ReminderDB, PushSubscriptionDB, InviteDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PollDB, PollOptionDB, PollVoteDB, ReminderDB, PushSubscriptionDB, InviteDB, UserRoomKeyDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -545,6 +545,88 @@ async def store_room_key(room_id: int, req: Request):
             # For simplicity, we use a JSON field or just broadcast via WS
             pass
         return {"ok": True}
+    finally:
+        db.close()
+
+
+# ─── Multi-device key sync ────────────────────────────────────────
+@app.post("/keys/sync")
+async def sync_upload_keys(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    keys = body.get("keys", [])
+    db = SessionLocal()
+    try:
+        db.query(UserRoomKeyDB).filter(UserRoomKeyDB.user_id == user["id"]).delete()
+        for k in keys:
+            entry = UserRoomKeyDB(
+                user_id=user["id"],
+                room_id=int(k["room_id"]),
+                nonce=k["nonce"],
+                ciphertext=k["ciphertext"],
+            )
+            db.add(entry)
+        db.commit()
+        return {"ok": True, "count": len(keys)}
+    finally:
+        db.close()
+
+
+@app.get("/keys/sync")
+async def sync_download_keys(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        entries = db.query(UserRoomKeyDB).filter(UserRoomKeyDB.user_id == user["id"]).all()
+        keys = [
+            {"room_id": e.room_id, "nonce": e.nonce, "ciphertext": e.ciphertext}
+            for e in entries
+        ]
+        return {"keys": keys}
+    finally:
+        db.close()
+
+
+# ─── Public key storage ───────────────────────────────────────────
+@app.post("/profile/public-key")
+async def upload_public_key(req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    body = await req.json()
+    public_key = body.get("public_key")
+    if not public_key:
+        return JSONResponse({"error": "Falta public_key"}, status_code=400)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.id == user["id"]).first()
+        if u:
+            u.public_key = public_key
+            db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.get("/profile/public-key/{username}")
+async def get_public_key(username: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        u = db.query(UserDB).filter(UserDB.username == username).first()
+        if not u:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        return {"username": u.username, "public_key": u.public_key or ""}
     finally:
         db.close()
 

@@ -204,4 +204,13 @@ class InviteDB(Base):
     creator = relationship("UserDB", foreign_keys=[created_by])
 
 
+class UserRoomKeyDB(Base):
+    __tablename__ = "user_room_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    room_id = Column(Integer, nullable=False)
+    nonce = Column(String(48), nullable=False)
+    ciphertext = Column(Text, nullable=False)
+
+
 Base.metadata.create_all(bind=engine)
