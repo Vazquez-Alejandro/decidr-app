@@ -22,22 +22,45 @@
 - TURN server (coturn, /ice-config)
 - Edit/delete messages
 - Reply to messages
+- Multi-reply
 - Typing indicator
 - PostgreSQL support (DATABASE_URL)
 - Environment variables (JWT_SECRET, MP_ACCESS_TOKEN)
-- Multi-reply
 - View once (bomb image)
 - Message status (pending/sent/delivered/read)
 - Online / last seen
 - Privacy settings (read receipts, online status, last seen)
-- Buy Me a Coffee profile URL
 - Custom status text (presets + free text)
 - Buzz (nudge) with configurable allow_buzz
 - Audio/video file support (inline player with speed 1x/1.5x/2x, view once)
+- Voice notes (record, encrypt, upload, playback with waveform)
+- Ephemeral messages (auto-delete after timer, fade-out animation)
+- Group admin (backend): is_admin column, promote/demote, add/remove members
+- Group admin UI: room info modal with member list, admin controls, add member
+- Message search (ILINE, 30 results, scroll-to + highlight)
+- Forward/copy message (context menu, re-encrypt for target room)
+- Channels (is_channel, admin-only messaging, 📢 icon, channel notice)
+- Share contact (vCard-style card with avatar, name, phone, "Ver perfil")
+- Block users (server-side enforcement in WS broadcast)
+- Invite link + QR (InviteDB, generate, join, QR from api.qrserver.com)
+- Message reactions (6 emoji picker, badges with user list)
+- Polls (create with dynamic options, vote, percentage bars)
+- Stickers (categorized picker, emoji + custom)
+- Reminders (set from any message, configurable timer)
+- Scheduled messages (date/time picker, target selector)
+- Confirmaciones de lectura (✓, ✓✓, ✓✓ azul; delivered/read via WS)
 
-## 🔜 Next Features (User side)
+## 🔜 Next
 
-### 1. Spotify integration — requires user action
+### 1. Multidispositivo — pendiente de implementar
+**Objetivo:** Permitir que un usuario tenga múltiples sesiones (dispositivos) activas simultáneamente, con sincronización de claves E2EE.
+
+**Plan tentativo:**
+- Almacenar room-keys cifradas por usuario en el servidor (cifradas con su clave pública)
+- Al iniciar sesión en un nuevo dispositivo, recuperar y descifrar las room-keys
+- Sincronización vía WS cuando se agrega un nuevo dispositivo
+
+### 2. Spotify integration — requires user action
 **What the user needs to do:**
 1. Go to https://developer.spotify.com/dashboard
 2. Log in with your Spotify account
@@ -53,7 +76,7 @@
 - Broadcast `set_status` via WS when track changes
 - Frontend shows "🎵 *Song* — *Artist*" in status
 
-### 2. Full-screen animations (beso, corazones, etc.) — requires user action
+### 3. Full-screen animations (beso, corazones, etc.) — requires user action
 **What the user needs to do:**
 - Find/buy/create animated GIFs or CSS animations (e.g., kiss, hearts, fireworks)
 - Options:
@@ -72,7 +95,6 @@
 - Logging (instead of print())
 - Message history loading / infinite scroll
 - Read receipts respect privacy completely (contacts mode needs contact list)
-- Group admin features (remove members, change name)
 - Notification click opens correct chat
 
 ## Key Context for Next Time
@@ -89,3 +111,7 @@
 - Status presets: Disponible, Ocupado, Ausente, En llamada, No molestar
 - Buzz anim: CSS `@keyframes buzzShake` + `navigator.vibrate(400)` + square wave 200Hz
 - Cualquier cambio de esquema SQLite requiere borrar `decidr.db` y recrear
+- Token file en `/home/alejandro/Escritorio/Proyectos/token.txt` con formato `github: ghp_...`
+- Remote real: `https://github.com/Vazquez-Alejandro/decidr-app.git`
+- Push con: `git -c credential.helper=... push` o seteando remote URL con token
+- Restaurar remote a `git@github.com:anomalyco/decidr-app.git` después del push
