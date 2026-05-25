@@ -238,7 +238,7 @@ async def create_room(req: Request):
         db.add(room)
         db.commit()
         db.refresh(room)
-        member = RoomMemberDB(room_id=room.id, user_id=user["id"])
+        member = RoomMemberDB(room_id=room.id, user_id=user["id"], is_admin=True)
         db.add(member)
         db.commit()
         return {"id": room.id, "name": room.name, "created_at": room.created_at.isoformat()}
@@ -305,7 +305,123 @@ async def join_room(room_id: int, req: Request):
         db.close()
 
 
-@app.delete("/rooms/{room_id}")
+def is_room_admin(db: Session, room_id: int, user_id: int) -> bool:
+    member = db.query(RoomMemberDB).filter(
+        RoomMemberDB.room_id == room_id,
+        RoomMemberDB.user_id == user_id
+    ).first()
+    return member is not None and member.is_admin
+
+
+@app.get("/rooms/{room_id}/members")
+async def get_room_members(room_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        room = db.query(RoomDB).filter(RoomDB.id == room_id).first()
+        if not room:
+            return JSONResponse({"error": "Sala no encontrada"}, status_code=404)
+        member_rows = db.query(RoomMemberDB).filter(RoomMemberDB.room_id == room_id).all()
+        members = []
+        for m in member_rows:
+            u = db.query(UserDB).filter(UserDB.id == m.user_id).first()
+            if u:
+                members.append({
+                    "id": u.id,
+                    "username": u.username,
+                    "display_name": u.display_name or u.username,
+                    "is_admin": m.is_admin,
+                    "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+                })
+        return {"members": members}
+    finally:
+        db.close()
+
+
+@app.post("/rooms/{room_id}/members")
+async def add_room_member(room_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        if not is_room_admin(db, room_id, user["id"]):
+            return JSONResponse({"error": "Solo admins pueden agregar miembros"}, status_code=403)
+        body = await req.json()
+        username = body.get("username")
+        target = db.query(UserDB).filter(UserDB.username == username).first()
+        if not target:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        existing = db.query(RoomMemberDB).filter(
+            RoomMemberDB.room_id == room_id,
+            RoomMemberDB.user_id == target.id
+        ).first()
+        if existing:
+            return JSONResponse({"error": "Ya es miembro"}, status_code=400)
+        member = RoomMemberDB(room_id=room_id, user_id=target.id)
+        db.add(member)
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.delete("/rooms/{room_id}/members/{username}")
+async def remove_room_member(room_id: int, username: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        if not is_room_admin(db, room_id, user["id"]):
+            return JSONResponse({"error": "Solo admins pueden expulsar miembros"}, status_code=403)
+        target = db.query(UserDB).filter(UserDB.username == username).first()
+        if not target:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        member = db.query(RoomMemberDB).filter(
+            RoomMemberDB.room_id == room_id,
+            RoomMemberDB.user_id == target.id
+        ).first()
+        if not member:
+            return JSONResponse({"error": "No es miembro"}, status_code=404)
+        db.delete(member)
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.put("/rooms/{room_id}/members/{username}")
+async def toggle_room_admin(room_id: int, username: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        if not is_room_admin(db, room_id, user["id"]):
+            return JSONResponse({"error": "Solo admins pueden cambiar roles"}, status_code=403)
+        body = await req.json()
+        make_admin = body.get("admin", True)
+        target = db.query(UserDB).filter(UserDB.username == username).first()
+        if not target:
+            return JSONResponse({"error": "Usuario no encontrado"}, status_code=404)
+        member = db.query(RoomMemberDB).filter(
+            RoomMemberDB.room_id == room_id,
+            RoomMemberDB.user_id == target.id
+        ).first()
+        if not member:
+            return JSONResponse({"error": "No es miembro"}, status_code=404)
+        member.is_admin = make_admin
+        db.commit()
+        return {"ok": True, "is_admin": member.is_admin}
+    finally:
+        db.close()
 async def delete_room(room_id: int, req: Request):
     token = req.headers.get("authorization", "").replace("Bearer ", "")
     user = get_token_user(token)

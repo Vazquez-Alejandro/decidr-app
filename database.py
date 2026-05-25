@@ -91,6 +91,7 @@ class RoomMemberDB(Base):
     room_id = Column(Integer, ForeignKey("rooms.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
     joined_at = Column(DateTime, default=datetime.datetime.utcnow)
+    is_admin = Column(Boolean, default=False)
     room = relationship("RoomDB")
     user = relationship("UserDB")
 
