@@ -204,6 +204,7 @@
                 <button onclick="togglePollModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Encuesta">📊</button>
                 <button onclick="shareContact()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Compartir contacto">👤</button>
                 <button onclick="showInviteModal()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Invitar">🔗</button>
+                <button id="roomMembersBtn" onclick="showRoomInfo()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95 hidden" title="Miembros">👥</button>
                 <button onclick="toggleSearch()" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Buscar">🔍</button>
                 <div class="relative"><button onclick="toggleCallPicker(false)" class="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-lg active:scale-95" title="Llamada de voz">📞</button></div>
                 <div class="relative">
@@ -373,6 +374,24 @@
                 <button id="inviteCopyBtn" onclick="copyInviteLink()" class="flex-1 bg-gray-100 text-gray-600 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 transition hidden">📋 Copiar</button>
             </div>
             <p id="inviteError" class="text-red-500 text-xs text-center mt-2 hidden"></p>
+        </div>
+    </div>
+
+    <!-- Room info modal -->
+    <div id="roomInfoModal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this)hideRoomInfo()">
+        <div class="modal-box bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center p-4 border-b border-gray-100 shrink-0">
+                <h2 class="font-bold text-lg" id="roomInfoTitle">Miembros</h2>
+                <button onclick="hideRoomInfo()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition">✕</button>
+            </div>
+            <div id="roomInfoContent" class="overflow-y-auto flex-1 p-4"></div>
+            <div class="p-4 border-t border-gray-100 shrink-0">
+                <div class="flex gap-2">
+                    <input id="roomAddMemberInput" type="text" class="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#5a9fbc]" placeholder="Nombre de usuario..." onkeydown="if(event.key==='Enter')addMemberToRoom()">
+                    <button onclick="addMemberToRoom()" class="bg-[#5a9fbc] text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#4a87a0] transition shrink-0">Agregar</button>
+                </div>
+                <p id="roomInfoError" class="text-red-500 text-xs text-center mt-2 hidden"></p>
+            </div>
         </div>
     </div>
 
@@ -1154,8 +1173,68 @@
             navigator.clipboard.writeText(link).catch(()=>{});
             showToast('🔗 Link copiado');
         }
+        // ─── Room info (admin) ───
+        let roomMembers=[];
+        async function showRoomInfo(){
+            if(!currentRoom||currentRoom==='default_room')return;
+            document.getElementById('roomInfoModal').classList.remove('hidden');
+            document.getElementById('roomInfoTitle').textContent='Miembros — '+currentRoomName;
+            document.getElementById('roomInfoError').classList.add('hidden');
+            document.getElementById('roomInfoContent').innerHTML='<p class="text-gray-400 text-sm text-center py-8">Cargando...</p>';
+            try{
+                const r=await fetch('/rooms/'+currentRoom+'/members',{headers:{'Authorization':'Bearer '+token}});
+                const d=await r.json();
+                if(r.ok){roomMembers=d.members||[];renderMembers(roomMembers);}
+                else{document.getElementById('roomInfoContent').innerHTML='<p class="text-red-500 text-sm text-center py-8">'+escapeHtml(d.error||'Error')+'</p>';}
+            }catch(e){document.getElementById('roomInfoContent').innerHTML='<p class="text-red-500 text-sm text-center py-8">Error al cargar</p>';}
+        }
+        function hideRoomInfo(){document.getElementById('roomInfoModal').classList.add('hidden');}
+        function renderMembers(members){
+            const room=myRooms.find(r=>r.id.toString()===currentRoom);
+            const isAdmin=room&&room.is_admin;
+            const html=members.map(m=>{
+                const badge=m.is_admin?'<span class="text-[10px] bg-[#5a9fbc]/10 text-[#5a9fbc] px-2 py-0.5 rounded-full font-medium">admin</span>':'';
+                let actions='';
+                if(isAdmin&&m.username!==myUsername){
+                    if(m.is_admin)actions+=`<button onclick="toggleAdmin('${m.username}',false)" class="text-[11px] bg-amber-50 text-amber-600 px-2 py-1 rounded-lg hover:bg-amber-100 transition">Deponer</button> `;
+                    else actions+=`<button onclick="toggleAdmin('${m.username}',true)" class="text-[11px] bg-blue-50 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-100 transition">Hacer admin</button> `;
+                    actions+=`<button onclick="removeMember('${m.username}')" class="text-[11px] bg-red-50 text-red-500 px-2 py-1 rounded-lg hover:bg-red-100 transition">Eliminar</button>`;
+                }
+                if(!actions)actions='<span class="text-[11px] text-gray-400">—</span>';
+                return `<div class="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-gray-50 transition"><div class="flex items-center gap-2"><div class="w-8 h-8 rounded-full bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] flex items-center justify-center text-white text-xs font-bold shrink-0">${escapeHtml((m.display_name||m.username||'?')[0].toUpperCase())}</div><div><div class="text-sm font-medium text-gray-800">${escapeHtml(m.display_name||m.username)} ${badge}</div><div class="text-[10px] text-gray-400">@${m.username}</div></div></div><div class="flex gap-1 shrink-0">${actions}</div></div>`;
+            }).join('');
+            document.getElementById('roomInfoContent').innerHTML=html||'<p class="text-gray-400 text-sm text-center py-8">Sin miembros</p>';
+        }
+        async function addMemberToRoom(){
+            const input=document.getElementById('roomAddMemberInput');
+            const username=input.value.trim();
+            const errEl=document.getElementById('roomInfoError');
+            errEl.classList.add('hidden');
+            if(!username){errEl.textContent='Escribí un nombre de usuario';errEl.classList.remove('hidden');return;}
+            try{
+                const r=await fetch('/rooms/'+currentRoom+'/members',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({username})});
+                const d=await r.json();
+                if(r.ok){input.value='';showToast('✅ '+escapeHtml(d.display_name||username)+' agregado');showRoomInfo();}
+                else{errEl.textContent=d.error||'Error';errEl.classList.remove('hidden');}
+            }catch(e){errEl.textContent='Error de conexión';errEl.classList.remove('hidden');}
+        }
+        async function removeMember(username){
+            if(!confirm('¿Eliminar a @'+username+'?'))return;
+            try{
+                const r=await fetch('/rooms/'+currentRoom+'/members/'+username,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+                if(r.ok){showToast('🗑️ @'+username+' eliminado');showRoomInfo();}
+                else{const d=await r.json();document.getElementById('roomInfoError').textContent=d.error||'Error';document.getElementById('roomInfoError').classList.remove('hidden');}
+            }catch(e){document.getElementById('roomInfoError').textContent='Error de conexión';document.getElementById('roomInfoError').classList.remove('hidden');}
+        }
+        async function toggleAdmin(username,makeAdmin){
+            try{
+                const r=await fetch('/rooms/'+currentRoom+'/members/'+username,{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({admin:makeAdmin})});
+                if(r.ok){showToast(makeAdmin?'👑 @'+username+' es admin':'📉 @'+username+' ya no es admin');showRoomInfo();}
+                else{const d=await r.json();document.getElementById('roomInfoError').textContent=d.error||'Error';document.getElementById('roomInfoError').classList.remove('hidden');}
+            }catch(e){document.getElementById('roomInfoError').textContent='Error de conexión';document.getElementById('roomInfoError').classList.remove('hidden');}
+        }
         async function closeCurrentChat(){const id=currentRoom;if(!id||!confirm('¿Cerrar este chat?'))return;try{const r=await fetch('/rooms/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(r.ok){delete unreadCounts[id];await fetchRooms();const first=myRooms[0];if(first)switchRoom(first.id,first.name,null);else{currentRoom='';currentRoomName='';document.getElementById('roomTitle').textContent='Sin chats';document.getElementById('closeChatBtn').classList.add('hidden');chat.innerHTML='<div class="system-msg italic">Sin chats disponibles</div>';renderRooms();updatePageTitle();}}else{alert(d.error||'Error');}}catch(e){alert('Error al cerrar chat');}}
-        function switchRoom(id,name,el,noClear){console.log('switchRoom called',id,name,'noClear',noClear);currentRoom=id.toString();currentRoomName=name||'General';if(!noClear)delete unreadCounts[currentRoom];renderRooms();updatePageTitle();document.querySelectorAll('.room-item').forEach(r=>r.classList.remove('room-active'));if(el)el.classList.add('room-active');else{document.querySelectorAll('.room-item').forEach(r=>{if(r.dataset.room===currentRoom)r.classList.add('room-active');});}const titleEl=document.getElementById('roomTitle');titleEl.textContent=currentRoomName;titleEl.className='font-bold leading-tight text-sm truncate cursor-pointer hover:opacity-80';titleEl.title='Ver perfil';const room=myRooms.find(r=>r.id.toString()===currentRoom);const isDm=room&&room.is_dm;if(isDm){titleEl.onclick=function(){showOtherProfile(currentRoomName);};if(ws)ws.send(JSON.stringify({type:'get_user_status',target:currentRoomName}));const ku=knownUsers[currentRoomName];if(ku)document.getElementById('roomUserStatus').textContent=ku.status_text||'';else document.getElementById('roomUserStatus').textContent='';}else{titleEl.onclick=null;document.getElementById('roomUserStatus').textContent='';}document.getElementById('buzzBtn').classList.toggle('hidden',!isDm);document.getElementById('closeChatBtn').classList.toggle('hidden',!id||id==='default_room');chat.innerHTML=`<div class="system-msg italic">🔒 ${currentRoomName}</div>`;hasRoomKey=false;roomKeyRequested=false;const existing=Crypto.getRoomKey(currentRoom);if(existing)hasRoomKey=true;requestRoomKey();if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'set_room',room:currentRoom}));updateRoomStatus();// Channel check
+        function switchRoom(id,name,el,noClear){console.log('switchRoom called',id,name,'noClear',noClear);currentRoom=id.toString();currentRoomName=name||'General';if(!noClear)delete unreadCounts[currentRoom];renderRooms();updatePageTitle();document.querySelectorAll('.room-item').forEach(r=>r.classList.remove('room-active'));if(el)el.classList.add('room-active');else{document.querySelectorAll('.room-item').forEach(r=>{if(r.dataset.room===currentRoom)r.classList.add('room-active');});}const titleEl=document.getElementById('roomTitle');titleEl.textContent=currentRoomName;titleEl.className='font-bold leading-tight text-sm truncate cursor-pointer hover:opacity-80';titleEl.title='Ver perfil';const room=myRooms.find(r=>r.id.toString()===currentRoom);const isDm=room&&room.is_dm;if(isDm){titleEl.onclick=function(){showOtherProfile(currentRoomName);};if(ws)ws.send(JSON.stringify({type:'get_user_status',target:currentRoomName}));const ku=knownUsers[currentRoomName];if(ku)document.getElementById('roomUserStatus').textContent=ku.status_text||'';else document.getElementById('roomUserStatus').textContent='';}else{titleEl.onclick=function(){if(currentRoom&&currentRoom!=='default_room')showRoomInfo();};document.getElementById('roomUserStatus').textContent='';}document.getElementById('buzzBtn').classList.toggle('hidden',!isDm);document.getElementById('closeChatBtn').classList.toggle('hidden',!id||id==='default_room');document.getElementById('roomMembersBtn').classList.toggle('hidden',!id||id==='default_room'||isDm);chat.innerHTML=`<div class="system-msg italic">🔒 ${currentRoomName}</div>`;hasRoomKey=false;roomKeyRequested=false;const existing=Crypto.getRoomKey(currentRoom);if(existing)hasRoomKey=true;requestRoomKey();if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'set_room',room:currentRoom}));updateRoomStatus();// Channel check
 const isChannel=room&&room.is_channel;
 const isAdmin=room&&room.is_admin;
 const inputBar=document.getElementById('inputBar');
