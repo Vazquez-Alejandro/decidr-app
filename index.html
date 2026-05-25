@@ -622,6 +622,23 @@
         <button onclick="sendReaction('😡')" class="text-xl w-9 h-9 rounded-lg hover:bg-gray-100 transition active:scale-125" title="Me enfada">😡</button>
     </div>
 
+    <!-- Message context menu -->
+    <div id="msgContextMenu" class="hidden fixed z-[60] bg-white rounded-xl shadow-2xl border border-gray-200 py-1 min-w-[150px]" style="transform:translateY(-100%);">
+        <button onclick="copyMessage()" class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 flex items-center gap-2"><span>📋</span> Copiar texto</button>
+        <button onclick="showForwardPicker()" class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 flex items-center gap-2"><span>➡️</span> Reenviar</button>
+    </div>
+
+    <!-- Forward room picker -->
+    <div id="forwardOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)this.classList.add('hidden')">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 max-h-[70vh] flex flex-col" onclick="event.stopPropagation()">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <h3 class="font-bold text-base">Reenviar a...</h3>
+                <button onclick="document.getElementById('forwardOverlay').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div id="forwardRoomList" class="overflow-y-auto flex-1"></div>
+        </div>
+    </div>
+
     <!-- Poll modal -->
     <div id="pollModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick="if(event.target===this)togglePollModal()">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onclick="event.stopPropagation()">
@@ -949,6 +966,67 @@
             t.textContent=msg;
             document.body.appendChild(t);
             setTimeout(()=>{t.remove();},2000);
+        }
+
+        // ─── Context menu (copiar / reenviar) ───
+        let contextMsgId=null;
+        function showMessageMenu(e,msgId){
+            e.preventDefault();
+            const menu=document.getElementById('msgContextMenu');
+            contextMsgId=msgId;
+            menu.style.left=e.clientX+'px';
+            menu.style.top=e.clientY+'px';
+            menu.classList.remove('hidden');
+        }
+        document.addEventListener('click',function(){
+            const m=document.getElementById('msgContextMenu');
+            if(!m.classList.contains('hidden'))m.classList.add('hidden');
+        });
+        function copyMessage(){
+            const el=chat.querySelector(`[data-message-id="${contextMsgId}"]`)||chat.querySelector(`[data-msg-id="${contextMsgId}"]`);
+            if(!el)return;
+            const txt=el.dataset.decryptedContent||el.textContent;
+            navigator.clipboard.writeText(txt).catch(()=>{});
+            document.getElementById('msgContextMenu').classList.add('hidden');
+            showToast('📋 Copiado');
+        }
+        function showForwardPicker(){
+            const menu=document.getElementById('msgContextMenu');
+            const overlay=document.getElementById('forwardOverlay');
+            const list=document.getElementById('forwardRoomList');
+            menu.classList.add('hidden');
+            list.innerHTML='';
+            myRooms.forEach(r=>{
+                if(r.id.toString()===currentRoom)return;
+                const div=document.createElement('div');
+                div.className='px-4 py-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 flex items-center gap-3';
+                const initial=(r.name||'G')[0].toUpperCase();
+                div.innerHTML=`<div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5a9fbc] to-[#7ab8d4] flex items-center justify-center text-white font-bold text-sm shrink-0">${initial}</div><span class="font-medium text-sm">${escapeHtml(r.name)}</span>`;
+                div.onclick=()=>doForward(r.id,r.name);
+                list.appendChild(div);
+            });
+            overlay.classList.remove('hidden');
+        }
+        function doForward(targetId,targetName){
+            const overlay=document.getElementById('forwardOverlay');
+            overlay.classList.add('hidden');
+            const el=chat.querySelector(`[data-message-id="${contextMsgId}"]`)||chat.querySelector(`[data-msg-id="${contextMsgId}"]`);
+            if(!el)return;
+            const decrypted=el.dataset.decryptedContent||'';
+            const msgId=nextMsgId();
+            messageStatuses[msgId]='pending';
+            let fileData=null;
+            try{const p=JSON.parse(decrypted);if(p&&p.type==='file')fileData=p;}catch(e){}
+            if(fileData){
+                const p={type:"text",room:targetId.toString(),msg_id:msgId,content:decrypted};
+                if(!ws||ws.readyState!==WebSocket.OPEN){pendingMessages.push(p);connectWs();}else{ws.send(JSON.stringify(p));}
+            }else{
+                const p={type:"text",room:targetId.toString(),msg_id:msgId};
+                const enc=Crypto.encryptMessage(targetId.toString(),decrypted);
+                if(enc){p.content=enc.ciphertext;p.nonce=enc.nonce;}else p.content=decrypted;
+                if(!ws||ws.readyState!==WebSocket.OPEN){pendingMessages.push(p);connectWs();}else{ws.send(JSON.stringify(p));}
+            }
+            showToast('➡️ Reenviado a '+targetName);
         }
         
         // ─── Message info ───
@@ -1373,7 +1451,7 @@
             const t = new Date();
             const ts = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
             const tsFull = t.toLocaleString();
-            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;if(d.msg_id)div.dataset.msgId=d.msg_id;if(d.message_id){div.dataset.messageId=d.message_id;div.dataset.replyPreview=display.slice(0,60);}div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';let replyHtml='';if(d.reply_to){let replyIds=[];try{replyIds=JSON.parse(d.reply_to);}catch(e){replyIds=[d.reply_to];}if(!Array.isArray(replyIds))replyIds=[replyIds];replyIds.forEach(rid=>{const replyEl=chat.querySelector(`[data-message-id="${rid}"]`);let replyText='Mensaje anterior';let replySender='';if(replyEl){replyText=replyEl.dataset.replyPreview||replyEl.textContent?.trim().slice(0,80)||'Mensaje anterior';const s=replyEl.dataset.sender;if(s)replySender=s;}replyHtml+=`<div class="reply-quote flex items-center gap-1.5 mb-1 pb-1 border-l-2 border-[#5a9fbc] pl-2"><span class="text-[9px] font-semibold text-[#5a9fbc]">${escapeHtml(replySender||'Mensaje')}</span><span class="text-[10px] text-gray-500 truncate">${escapeHtml(replyText.slice(0,80))}</span></div>`;});}if(d.deleted){div.innerHTML=replyHtml+( !isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+`<span class="italic text-gray-400 text-sm">🗑️ Mensaje eliminado</span><div class="flex items-center justify-end gap-1 mt-1">${isMe?`<span class="msg-status text-[11px] leading-none" style="color:#999">\u23f3</span>`:''}<span class="text-[9px] text-gray-400 opacity-60">${ts}</span></div>`}else{let fileData=null;try{const p=JSON.parse(display);if(p&&p.type==='file')fileData=p;}catch(e){}if(fileData&&fileData.voice_note){
+            if(d.type==="chat"){const isMe=d.client_id===clientId;let display=d.content,enc=false;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);console.log('appendMessage chat: nonce present, decrypted?',dec!==null);if(dec!==null){display=dec;enc=true;}else display="[cifrado: "+d.content.slice(0,20)+"...]";}div.dataset.rawContent=d.content;div.dataset.decryptedContent=display;div.className=`bubble ${isMe?'bubble-out':'bubble-in'}${enc?' bubble-encrypted':''}`;if(d.msg_id)div.dataset.msgId=d.msg_id;if(d.message_id){div.dataset.messageId=d.message_id;div.dataset.replyPreview=display.slice(0,60);}div.dataset.timestamp=tsFull;div.dataset.sender=d.sender||'';let replyHtml='';if(d.reply_to){let replyIds=[];try{replyIds=JSON.parse(d.reply_to);}catch(e){replyIds=[d.reply_to];}if(!Array.isArray(replyIds))replyIds=[replyIds];replyIds.forEach(rid=>{const replyEl=chat.querySelector(`[data-message-id="${rid}"]`);let replyText='Mensaje anterior';let replySender='';if(replyEl){replyText=replyEl.dataset.replyPreview||replyEl.textContent?.trim().slice(0,80)||'Mensaje anterior';const s=replyEl.dataset.sender;if(s)replySender=s;}replyHtml+=`<div class="reply-quote flex items-center gap-1.5 mb-1 pb-1 border-l-2 border-[#5a9fbc] pl-2"><span class="text-[9px] font-semibold text-[#5a9fbc]">${escapeHtml(replySender||'Mensaje')}</span><span class="text-[10px] text-gray-500 truncate">${escapeHtml(replyText.slice(0,80))}</span></div>`;});}if(d.deleted){div.innerHTML=replyHtml+( !isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+`<span class="italic text-gray-400 text-sm">🗑️ Mensaje eliminado</span><div class="flex items-center justify-end gap-1 mt-1">${isMe?`<span class="msg-status text-[11px] leading-none" style="color:#999">\u23f3</span>`:''}<span class="text-[9px] text-gray-400 opacity-60">${ts}</span></div>`}else{let fileData=null;try{const p=JSON.parse(display);if(p&&p.type==='file')fileData=p;}catch(e){}if(fileData&&fileData.voice_note){
     const dur=fileData.duration||0;
     const dm=Math.floor(dur/60);
     const ds=dur%60;
@@ -1395,6 +1473,11 @@
             div.addEventListener('click',function(e){
                 if(e.target.closest('.reaction-badge')||e.target.closest('.reactions-row')||e.target.closest('.msg-status')||e.target.closest('button'))return;
                 showReactionPicker(e,mid);
+            });
+            div.addEventListener('contextmenu',function(e){
+                e.preventDefault();
+                if(e.target.closest('.reaction-badge')||e.target.closest('.reactions-row')||e.target.closest('.msg-status')||e.target.closest('button'))return;
+                showMessageMenu(e,mid);
             });
         }
         chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
