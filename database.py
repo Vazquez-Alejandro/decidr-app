@@ -69,6 +69,8 @@ class MessageDB(Base):
     reply_to = Column(Text, nullable=True)
     status = Column(String, default='sent')
     read_at = Column(DateTime, nullable=True)
+    ephemeral_seconds = Column(Integer, nullable=True)
+    ephemeral_deleted = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     sender = relationship("UserDB")
     chat = relationship("ChatDB")

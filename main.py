@@ -1302,31 +1302,6 @@ async def broadcast_user_list():
 
 
 # ─── Programación de mensajes ─────────────────────────────────────
-async def reminder_checker():
-    while True:
-        try:
-            db = SessionLocal()
-            now = datetime.datetime.utcnow()
-            due = db.query(ReminderDB).filter(
-                ReminderDB.done == False,
-                ReminderDB.remind_at <= now
-            ).all()
-            for r in due:
-                user = db.query(UserDB).filter(UserDB.id == r.user_id).first()
-                if user:
-                    await manager.send_to(user.username, {
-                        "type": "reminder_fired",
-                        "content": r.content,
-                        "room": r.room
-                    })
-                r.done = True
-                db.commit()
-            db.close()
-        except Exception:
-            pass
-        await asyncio.sleep(10)
-
-
 async def scheduled_message_checker():
     while True:
         try:
@@ -1354,10 +1329,63 @@ async def scheduled_message_checker():
         await asyncio.sleep(30)
 
 
+async def reminder_checker():
+    while True:
+        try:
+            db = SessionLocal()
+            now = datetime.datetime.utcnow()
+            due = db.query(ReminderDB).filter(
+                ReminderDB.done == False,
+                ReminderDB.remind_at <= now
+            ).all()
+            for r in due:
+                user = db.query(UserDB).filter(UserDB.id == r.user_id).first()
+                if user:
+                    await manager.send_to(user.username, {
+                        "type": "reminder_fired",
+                        "content": r.content,
+                        "room": r.room
+                    })
+                r.done = True
+                db.commit()
+            db.close()
+        except Exception:
+            pass
+        await asyncio.sleep(10)
+
+
+async def ephemeral_checker():
+    while True:
+        try:
+            db = SessionLocal()
+            now = datetime.datetime.utcnow()
+            candidates = db.query(MessageDB).filter(
+                MessageDB.ephemeral_seconds.isnot(None),
+                MessageDB.ephemeral_deleted == False
+            ).all()
+            for msg in candidates:
+                if msg.timestamp and msg.timestamp + datetime.timedelta(seconds=msg.ephemeral_seconds) <= now:
+                    chat = db.query(ChatDB).filter(ChatDB.id == msg.chat_id).first()
+                    room = chat.name if chat else "default_room"
+                    await manager.broadcast({
+                        "type": "ephemeral_delete",
+                        "message_id": msg.id,
+                        "room": room,
+                        "msg_id": None,
+                    })
+                    msg.ephemeral_deleted = True
+                    db.commit()
+            db.close()
+        except Exception:
+            pass
+        await asyncio.sleep(5)
+
+
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(scheduled_message_checker())
     asyncio.create_task(reminder_checker())
+    asyncio.create_task(ephemeral_checker())
 
 
 # ─── Gestión de juegos ─────────────────────────────────────────────
@@ -1418,7 +1446,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         is_game_result=False,
                         sender_id=user.id if user else 1,
                         chat_id=chat_db_id,
-                        reply_to=reply_to
+                        reply_to=reply_to,
+                        ephemeral_seconds=data.get("ephemeral")
                     )
                     db.add(db_msg)
                     db.commit()
@@ -1438,6 +1467,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "msg_id": msg_id,
                         "message_id": db_msg_id,
                         "reply_to": reply_to,
+                        "ephemeral": data.get("ephemeral"),
                         "status": "sent"
                     }
                     for cid, conn in manager.active_connections.items():
