@@ -1190,6 +1190,48 @@ async def mark_file_viewed(file_id: int, req: Request):
         db.close()
 
 
+@app.post("/files/{file_id}/transcribe")
+async def transcribe_audio(file_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        f = db.query(FileDB).filter(FileDB.id == file_id).first()
+        if not f:
+            return JSONResponse({"error": "Archivo no encontrado"}, status_code=404)
+        if f.room_id:
+            member = db.query(RoomMemberDB).filter(
+                RoomMemberDB.room_id == f.room_id,
+                RoomMemberDB.user_id == user["id"]
+            ).first()
+            if not member and f.uploader_id != user["id"]:
+                return JSONResponse({"error": "No autorizado"}, status_code=403)
+        # Read raw audio bytes from request body
+        raw_audio = await req.body()
+        if not raw_audio or len(raw_audio) < 100:
+            return JSONResponse({"error": "Datos de audio inválidos"}, status_code=400)
+        import tempfile, speech_recognition as sr
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(raw_audio)
+            tmp_path = tmp.name
+        try:
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(tmp_path) as source:
+                audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="es-ES")
+            return {"text": text}
+        except sr.UnknownValueError:
+            return JSONResponse({"error": "No se pudo reconocer el audio"}, status_code=400)
+        except sr.RequestError as e:
+            return JSONResponse({"error": f"Error del servicio de reconocimiento: {e}"}, status_code=502)
+        finally:
+            os.unlink(tmp_path)
+    finally:
+        db.close()
+
+
 @app.get("/rooms/{room_id}/search")
 async def search_room_messages(room_id: int, req: Request):
     token = req.headers.get("authorization", "").replace("Bearer ", "")

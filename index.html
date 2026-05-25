@@ -1611,9 +1611,9 @@ if(isChannel&&!isAdmin){if(inputBar)inputBar.classList.add('hidden');if(channelN
     const fname=escapeHtml(fileData.name);
     const fmime=escapeHtml(fileData.mime);
     div.className='bubble '+(isMe?'bubble-out':'bubble-in');
-    div.innerHTML=replyHtml+(isMe?'':`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender||''}</span>`)+`<div class="voice-note"><button class="vn-play" onclick="playVoiceNote(this,'${fid}','${fkey}','${fname}','${fmime}')">\u25B6</button><div class="vn-wave">${Array.from({length:20},()=>'<div class="bar" style="height:'+(3+Math.random()*12)+'px"></div>').join('')}</div><span class="vn-time">${durStr}</span></div><div class="flex items-center justify-end gap-1 mt-1">${isMe?`<span class="msg-status text-[11px] leading-none" style="color:#999">\u23f3</span>`:''}<span class="text-[9px] text-gray-400 opacity-60">${ts}</span></div>`;
+    div.innerHTML=replyHtml+(isMe?'':`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender||''}</span>`)+`<div class="voice-note"><button class="vn-play" onclick="playVoiceNote(this,'${fid}','${fkey}','${fname}','${fmime}')">\u25B6</button><div class="vn-wave">${Array.from({length:20},()=>'<div class="bar" style="height:'+(3+Math.random()*12)+'px"></div>').join('')}</div><span class="vn-time">${durStr}</span></div><div class="voice-note-actions flex gap-1 mt-1"><button onclick="event.stopPropagation();transcribeVoiceNote('${fid}','${fkey}','${fname}','${fmime}',this)" class="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-0.5 rounded-lg transition">📝 Transcribir</button></div><div class="transcription-result text-xs text-gray-600 mt-1 hidden"></div><div class="flex items-center justify-end gap-1 mt-1">${isMe?`<span class="msg-status text-[11px] leading-none" style="color:#999">\u23f3</span>`:''}<span class="text-[9px] text-gray-400 opacity-60">${ts}</span></div>`;
     if(isMe&&d.message_id)updateMsgStatus(d.message_id,'sent');
-}else if(fileData){const sizeStr=fileData.size>1048576?(fileData.size/1048576).toFixed(1)+' MB':(fileData.size/1024).toFixed(1)+' KB';const fid=fileData.file_id;const fkey=escapeHtml(fileData.key);const fnam_esc=escapeHtml(fileData.name);const fmim_esc=escapeHtml(fileData.mime);const fvn=!!fileData.view_once;const isVoice=fileData.voice_note;const isAudio=fileData.mime&&fileData.mime.startsWith('audio/')&&!isVoice;const isVideo=fileData.mime&&fileData.mime.startsWith('video/');if(isVoice){const dur=fileData.duration||0;const dm=Math.floor(dur/60);const ds=dur%60;const durStr=dm+':'+(ds<10?'0':'')+ds;const vnDiv=document.createElement('div');vnDiv.className='voice-note';vnDiv.innerHTML='<button class="vn-play" onclick="playVoiceNote(this,\''+escapeHtml(fid)+'\',\''+escapeHtml(fkey)+'\',\''+escapeHtml(fnam_esc)+'\',\''+escapeHtml(fmim_esc)+'\')">\u25B6</button><div class="vn-wave">'+Array.from({length:20},(_,i)=>'<div class="bar" style="height:'+(3+Math.random()*12)+'px"></div>').join('')+'</div><span class="vn-time">'+durStr+'</span>';fileDiv=vnDiv;}else{const fileDiv=document.createElement('div');fileDiv.className='flex items-center gap-3';const iconSpan=document.createElement('span');iconSpan.className='text-3xl';iconSpan.textContent=isAudio?'\uD83C\uDFB5':isVideo?'\uD83C\uDFAC':(fileData.mime&&fileData.mime.startsWith('image/')?'\uD83D\uDDBC\uFE0F':'\uD83D\uDCC4');const infoDiv=document.createElement('div');infoDiv.className='min-w-0 flex-1';const nameDiv=document.createElement('div');nameDiv.className='font-semibold text-sm truncate';nameDiv.textContent=fileData.name;const sizeDiv=document.createElement('div');sizeDiv.className='text-[10px] text-gray-400';sizeDiv.textContent=sizeStr;infoDiv.appendChild(nameDiv);infoDiv.appendChild(sizeDiv);fileDiv.appendChild(iconSpan);fileDiv.appendChild(infoDiv);}if(!isVoice){const btn=document.createElement('button');btn.className='mt-1.5 w-full py-1.5 rounded-lg text-xs font-semibold text-white transition';btn.style.background='var(--primary)';if(isAudio||isVideo){btn.id='playbtn_'+fid;btn.textContent=isAudio?'\uD83C\uDFB5 Reproducir':'\u25B6 Reproducir';btn.dataset.loaded='0';btn.addEventListener('click',function(){if(this.dataset.loaded==='1')return;this.dataset.loaded='1';this.textContent='\u23F3 Cargando...';loadAVFile(fid,fkey,fnam_esc,fmim_esc,fvn,isVideo);});}else if(fileData.thumb&&fileData.thumb_key&&fileData.mime&&fileData.mime.startsWith('image/')){try{const raw=nacl.util.decodeBase64(fileData.thumb);const tnonce=raw.slice(0,nacl.secretbox.nonceLength);const tct=raw.slice(nacl.secretbox.nonceLength);const tk=nacl.util.decodeBase64(fileData.thumb_key);const tdec=nacl.secretbox.open(tct,tnonce,tk);if(tdec){const blob=new Blob([tdec],{type:'image/jpeg'});const url=URL.createObjectURL(blob);const thumbDiv=document.createElement('div');thumbDiv.className='rounded-lg overflow-hidden'+(isMe?'':' relative');const img=document.createElement('img');img.src=url;img.className='w-full h-32 object-cover rounded-lg'+(isMe?'':' blurred-thumb');img.dataset.fid=fid;img.dataset.fkey=fkey;img.dataset.fnam=fnam_esc;img.dataset.fmim=fmim_esc;img.dataset.fvn=fvn;thumbDiv.appendChild(img);if(!isMe){const ov=document.createElement('div');ov.className='thumb-overlay';ov.textContent='\uD83D\uDD12 Toca para ver';ov.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:#fff;font-size:0.85rem;font-weight:600;border-radius:8px;cursor:pointer';ov.addEventListener('click',function(e){e.stopPropagation();img.style.filter='none';this.remove();showFilePreview(+img.dataset.fid,img.dataset.fkey,img.dataset.fnam,img.dataset.fmim,img.dataset.fvn==='true');});thumbDiv.appendChild(ov);}fileDiv.innerHTML='';fileDiv.className='';fileDiv.style.cssText='';fileDiv.appendChild(thumbDiv);}}catch(e){}}else{btn.textContent=fileData.view_once?'\uD83D\uDD25 Ver una vez':'\u2B07\uFE0F Descargar';btn.addEventListener('click',function(){showFilePreview(fid,fkey,fnam_esc,fmim_esc,fvn);});}const outer=document.createElement('div');if(!isMe){const snd=document.createElement('span');snd.className='block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1';snd.textContent=d.sender||'';oouter.appendChild(snd);}outer.appendChild(fileDiv);if(!isVoice)outer.appendChild(btn);const tsDiv=document.createElement('div');tsDiv.className='flex items-center justify-end gap-1 mt-1';const stSp=document.createElement('span');stSp.className='msg-status text-[11px] leading-none';stSp.style.color='#999';stSp.textContent=isMe?'\u23f3':'';if(isMe)tsDiv.appendChild(stSp);const tsSp=document.createElement('span');tsSp.className='text-[9px] text-gray-400 opacity-60';tsSp.textContent=ts;tsDiv.appendChild(tsSp);if(d&&d.ephemeral){const eph=document.createElement('span');eph.className='ephemeral-badge';eph.textContent='⌛';tsDiv.appendChild(eph);}outer.appendChild(tsDiv);div.innerHTML=replyHtml;div.appendChild(outer);if(isMe&&d.message_id)updateMsgStatus(d.message_id,'sent');}else{const editLabel=d.edited?' <span class="text-[9px] text-gray-400 italic">(editado)</span>':'';div.innerHTML=replyHtml+( !isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+highlightMentions(escapeHtml(display))+editLabel+`<div class="flex items-center justify-between mt-1"><span class="flex items-center gap-1">${isMe?`<span class="msg-status text-[11px] leading-none" style="color:#999">\u23f3</span>`:''}<span class="text-[9px] text-gray-400 opacity-60">${ts}</span>${d.ephemeral?`<span class="ephemeral-badge">⌛</span>`:''}</span><span class="flex gap-1">${d.client_id!==clientId?`<button onclick="event.stopPropagation();setReply(this.dataset.mid,this.dataset.mtext)" data-mid="${d.message_id||0}" data-mtext="${escapeHtml(display.slice(0,50)).replace(/"/g,'&quot;')}" class="text-[9px] text-gray-400 hover:text-green-600 transition" title="Responder">\u21a9\ufe0f</button>`:''}<button onclick="event.stopPropagation();showReminderPicker(this)" class="text-[9px] text-gray-400 hover:text-[#5a9fbc] transition" title="Recordar">\u23f0</button>${isMe?`<button onclick="event.stopPropagation();editMsg(this)" class="text-[9px] text-gray-400 hover:text-[#5a9fbc] transition" title="Editar">\u270f\ufe0f</button><button onclick="event.stopPropagation();deleteMsg(this)" class="text-[9px] text-gray-400 hover:text-red-500 transition" title="Eliminar">\ud83d\uddd1\ufe0f</button>`:''}</span></div>`}if(isMe&&d.message_id)updateMsgStatus(d.message_id,'sent');if(!fileData&&!d.is_file){div.style.cursor='pointer';div.onclick=function(e){if(e.target.tagName==='BUTTON')return;e.stopPropagation();showMsgInfo(this);};}}}
+}else if(fileData){const sizeStr=fileData.size>1048576?(fileData.size/1048576).toFixed(1)+' MB':(fileData.size/1024).toFixed(1)+' KB';const fid=fileData.file_id;const fkey=escapeHtml(fileData.key);const fnam_esc=escapeHtml(fileData.name);const fmim_esc=escapeHtml(fileData.mime);const fvn=!!fileData.view_once;const isVoice=fileData.voice_note;const isAudio=fileData.mime&&fileData.mime.startsWith('audio/')&&!isVoice;const isVideo=fileData.mime&&fileData.mime.startsWith('video/');if(isVoice){const dur=fileData.duration||0;const dm=Math.floor(dur/60);const ds=dur%60;const durStr=dm+':'+(ds<10?'0':'')+ds;const vnDiv=document.createElement('div');vnDiv.className='voice-note';vnDiv.innerHTML='<button class="vn-play" onclick="playVoiceNote(this,\''+escapeHtml(fid)+'\',\''+escapeHtml(fkey)+'\',\''+escapeHtml(fnam_esc)+'\',\''+escapeHtml(fmim_esc)+'\')">\u25B6</button><div class="vn-wave">'+Array.from({length:20},(_,i)=>'<div class="bar" style="height:'+(3+Math.random()*12)+'px"></div>').join('')+'</div><span class="vn-time">'+durStr+'</span>';fileDiv=vnDiv;}else{const fileDiv=document.createElement('div');fileDiv.className='flex items-center gap-3';const iconSpan=document.createElement('span');iconSpan.className='text-3xl';iconSpan.textContent=isAudio?'\uD83C\uDFB5':isVideo?'\uD83C\uDFAC':(fileData.mime&&fileData.mime.startsWith('image/')?'\uD83D\uDDBC\uFE0F':'\uD83D\uDCC4');const infoDiv=document.createElement('div');infoDiv.className='min-w-0 flex-1';const nameDiv=document.createElement('div');nameDiv.className='font-semibold text-sm truncate';nameDiv.textContent=fileData.name;const sizeDiv=document.createElement('div');sizeDiv.className='text-[10px] text-gray-400';sizeDiv.textContent=sizeStr;infoDiv.appendChild(nameDiv);infoDiv.appendChild(sizeDiv);fileDiv.appendChild(iconSpan);fileDiv.appendChild(infoDiv);}if(!isVoice){const btn=document.createElement('button');btn.className='mt-1.5 w-full py-1.5 rounded-lg text-xs font-semibold text-white transition';btn.style.background='var(--primary)';if(isAudio||isVideo){btn.id='playbtn_'+fid;btn.textContent=isAudio?'\uD83C\uDFB5 Reproducir':'\u25B6 Reproducir';btn.dataset.loaded='0';btn.addEventListener('click',function(){if(this.dataset.loaded==='1')return;this.dataset.loaded='1';this.textContent='\u23F3 Cargando...';loadAVFile(fid,fkey,fnam_esc,fmim_esc,fvn,isVideo);});}else if(fileData.thumb&&fileData.thumb_key&&fileData.mime&&fileData.mime.startsWith('image/')){try{const raw=nacl.util.decodeBase64(fileData.thumb);const tnonce=raw.slice(0,nacl.secretbox.nonceLength);const tct=raw.slice(nacl.secretbox.nonceLength);const tk=nacl.util.decodeBase64(fileData.thumb_key);const tdec=nacl.secretbox.open(tct,tnonce,tk);if(tdec){const blob=new Blob([tdec],{type:'image/jpeg'});const url=URL.createObjectURL(blob);const thumbDiv=document.createElement('div');thumbDiv.className='rounded-lg overflow-hidden'+(isMe?'':' relative');const img=document.createElement('img');img.src=url;img.className='w-full h-32 object-cover rounded-lg'+(isMe?'':' blurred-thumb');img.dataset.fid=fid;img.dataset.fkey=fkey;img.dataset.fnam=fnam_esc;img.dataset.fmim=fmim_esc;img.dataset.fvn=fvn;thumbDiv.appendChild(img);if(!isMe){const ov=document.createElement('div');ov.className='thumb-overlay';ov.textContent='\uD83D\uDD12 Toca para ver';ov.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:#fff;font-size:0.85rem;font-weight:600;border-radius:8px;cursor:pointer';ov.addEventListener('click',function(e){e.stopPropagation();img.style.filter='none';this.remove();showFilePreview(+img.dataset.fid,img.dataset.fkey,img.dataset.fnam,img.dataset.fmim,img.dataset.fvn==='true');});thumbDiv.appendChild(ov);}fileDiv.innerHTML='';fileDiv.className='';fileDiv.style.cssText='';fileDiv.appendChild(thumbDiv);}}catch(e){}}else{btn.textContent=fileData.view_once?'\uD83D\uDD25 Ver una vez':'\u2B07\uFE0F Descargar';btn.addEventListener('click',function(){showFilePreview(fid,fkey,fnam_esc,fmim_esc,fvn);});}const outer=document.createElement('div');if(!isMe){const snd=document.createElement('span');snd.className='block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1';snd.textContent=d.sender||'';oouter.appendChild(snd);}outer.appendChild(fileDiv);if(!isVoice)outer.appendChild(btn);if(isAudio&&!isVoice){(function(){const tb=document.createElement('button');tb.className='mt-1 w-full py-1 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition';tb.textContent='\uD83D\uDCDD Transcribir';tb.addEventListener('click',function(){transcribeAudio(fid,fkey,fnam_esc,fmim_esc,tb);});outer.appendChild(tb);})();}const tsDiv=document.createElement('div');tsDiv.className='flex items-center justify-end gap-1 mt-1';const stSp=document.createElement('span');stSp.className='msg-status text-[11px] leading-none';stSp.style.color='#999';stSp.textContent=isMe?'\u23f3':'';if(isMe)tsDiv.appendChild(stSp);const tsSp=document.createElement('span');tsSp.className='text-[9px] text-gray-400 opacity-60';tsSp.textContent=ts;tsDiv.appendChild(tsSp);if(d&&d.ephemeral){const eph=document.createElement('span');eph.className='ephemeral-badge';eph.textContent='⌛';tsDiv.appendChild(eph);}outer.appendChild(tsDiv);div.innerHTML=replyHtml;div.appendChild(outer);if(isMe&&d.message_id)updateMsgStatus(d.message_id,'sent');}else{const editLabel=d.edited?' <span class="text-[9px] text-gray-400 italic">(editado)</span>':'';div.innerHTML=replyHtml+( !isMe?`<span class="block text-[9px] font-bold text-[#5a9fbc] uppercase mb-1">${d.sender}</span>`:'')+truncateText(display,d.message_id)+editLabel+`<div class="flex items-center justify-between mt-1"><span class="flex items-center gap-1">${isMe?`<span class="msg-status text-[11px] leading-none" style="color:#999">\u23f3</span>`:''}<span class="text-[9px] text-gray-400 opacity-60">${ts}</span>${d.ephemeral?`<span class="ephemeral-badge">⌛</span>`:''}</span><span class="flex gap-1">${d.client_id!==clientId?`<button onclick="event.stopPropagation();setReply(this.dataset.mid,this.dataset.mtext)" data-mid="${d.message_id||0}" data-mtext="${escapeHtml(display.slice(0,50)).replace(/"/g,'&quot;')}" class="text-[9px] text-gray-400 hover:text-green-600 transition" title="Responder">\u21a9\ufe0f</button>`:''}<button onclick="event.stopPropagation();showReminderPicker(this)" class="text-[9px] text-gray-400 hover:text-[#5a9fbc] transition" title="Recordar">\u23f0</button>${isMe?`<button onclick="event.stopPropagation();editMsg(this)" class="text-[9px] text-gray-400 hover:text-[#5a9fbc] transition" title="Editar">\u270f\ufe0f</button><button onclick="event.stopPropagation();deleteMsg(this)" class="text-[9px] text-gray-400 hover:text-red-500 transition" title="Eliminar">\ud83d\uddd1\ufe0f</button>`:''}</span></div>`}if(isMe&&d.message_id)updateMsgStatus(d.message_id,'sent');if(!fileData&&!d.is_file){div.style.cursor='pointer';div.onclick=function(e){if(e.target.tagName==='BUTTON')return;e.stopPropagation();showMsgInfo(this);};}}}
             else if(d.type==="scheduled"){div.className="bubble bubble-scheduled";let display=d.content;if(d.nonce){const dec=Crypto.decryptMessage(currentRoom,d.content,d.nonce);if(dec!==null)display=dec;else display="🔒 Mensaje cifrado";}div.innerHTML=`<div class="text-[9px] text-[#b45309] font-bold mb-1">📅 ${d.sender}</div>${escapeHtml(display)}<div class="text-[9px] text-gray-400 mt-1 text-right opacity-60">${ts}</div>`;}
             else if(d.type==="system"){div.className="system-msg";div.innerText=d.content;if(d.content.includes("Pozo"))document.getElementById('papelitoInput').classList.remove('hidden');}
             else if(d.type==="game_result"){div.className="game-result";div.innerHTML=d.content.replace(/\n/g,'<br>');if(d.content.includes("✊✋✌️")||d.content.includes("empate")||d.content.includes("gana")){document.getElementById('pptInput').classList.add('hidden');pptChosen=false;}}
@@ -1634,6 +1634,31 @@ if(isChannel&&!isAdmin){if(inputBar)inputBar.classList.add('hidden');if(channelN
         }
         function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
         function highlightMentions(text){return text.replace(/@(\w+)/g,(m,u)=>`<span class="mention${u===clientId?' mention-self':''}">${m}</span>`);}
+        const MSG_TRUNCATE=300;
+        function truncateText(text,msgId){
+            const html=highlightMentions(escapeHtml(text));
+            if(!text||text.length<=MSG_TRUNCATE)return html;
+            const short=highlightMentions(escapeHtml(text.slice(0,MSG_TRUNCATE)));
+            return `<div class="msg-text-collapsed" data-mid="${msgId||0}">${short}... <button onclick="event.stopPropagation();expandMsgText(this)" class="text-[#5a9fbc] text-xs font-semibold hover:underline">Ver más</button></div>`;
+        }
+        function expandMsgText(btn){
+            const div=btn.closest('.msg-text-collapsed');
+            if(!div)return;
+            const mid=div.dataset.mid;
+            const el=chat.querySelector(`[data-message-id="${mid}"],[data-msg-id="${mid}"]`);
+            if(!el)return;
+            const full=el.dataset.decryptedContent||'';
+            div.innerHTML=highlightMentions(escapeHtml(full))+' <button onclick="event.stopPropagation();collapseMsgText(this)" class="text-[#5a9fbc] text-xs font-semibold hover:underline">Ver menos</button>';
+        }
+        function collapseMsgText(btn){
+            const parent=btn.parentElement;
+            if(!parent)return;
+            const mid=parent.dataset.mid;
+            const el=chat.querySelector(`[data-message-id="${mid}"],[data-msg-id="${mid}"]`);
+            if(!el)return;
+            const full=el.dataset.decryptedContent||'';
+            parent.innerHTML=truncateText(full,mid);
+        }
 
         // ─── @Menciones ───
         let mentionIdx=-1;
@@ -1812,6 +1837,82 @@ if(isChannel&&!isAdmin){if(inputBar)inputBar.classList.add('hidden');if(channelN
                 btn.dataset.playing='1';
                 audio.play();
             }catch(e){console.log('voice error:',e);btn.textContent='\u25B6';}
+        }
+        async function transcribeVoiceNote(fid,fkey,fname,fmim,btn){
+            const resultDiv=btn.closest('.voice-note-actions').querySelector('.transcription-result');
+            if(!resultDiv)return;
+            btn.disabled=true;btn.textContent='\u23F3 Transcribiendo...';resultDiv.classList.remove('hidden');resultDiv.textContent='Procesando...';
+            try{
+                const text=await _doTranscribe(fid,fkey,fname,fmim);
+                resultDiv.textContent=text?'\uD83D\uDCDD '+text:'No se pudo reconocer';
+                btn.textContent='\uD83D\uDCDD Re-transcribir';btn.disabled=false;
+            }catch(e){resultDiv.textContent='Error: '+(e.message||'conexión');btn.textContent='\uD83D\uDCDD Reintentar';btn.disabled=false;}
+        }
+        async function transcribeAudio(fid,fkey,fname,fmim,btn){
+            btn.disabled=true;btn.textContent='\u23F3 Transcribiendo...';
+            const resultDiv=document.createElement('div');resultDiv.className='transcription-result text-xs text-gray-600 mt-1';btn.parentNode.insertBefore(resultDiv,btn.nextSibling);
+            try{
+                const text=await _doTranscribe(fid,fkey,fname,fmim);
+                resultDiv.textContent=text?'\uD83D\uDCDD '+text:'No se pudo reconocer';
+                btn.textContent='\uD83D\uDCDD Re-transcribir';btn.disabled=false;
+            }catch(e){resultDiv.textContent='Error: '+(e.message||'conexión');btn.textContent='\uD83D\uDCDD Reintentar';btn.disabled=false;}
+        }
+        async function _doTranscribe(fid,fkey,fname,fmim){
+            const r=await fetch('/files/'+fid,{headers:{'Authorization':'Bearer '+token}});
+            if(!r.ok)throw new Error('Error al descargar');
+            const encBuf=await r.arrayBuffer();
+            const key=nacl.util.decodeBase64(fkey);
+            const enced=new Uint8Array(encBuf);
+            const nonce=enced.slice(0,nacl.secretbox.nonceLength);
+            const ct=enced.slice(nacl.secretbox.nonceLength);
+            const dec=nacl.secretbox.open(ct,nonce,key);
+            if(!dec)throw new Error('Error de descifrado');
+            const blob=new Blob([dec],{type:fmim||'audio/webm'});
+            // Convert to WAV using AudioContext
+            const ab=await blob.arrayBuffer();
+            const ac=new (window.AudioContext||window.webkitAudioContext)();
+            const audioBuf=await ac.decodeAudioData(ab);
+            // Convert to mono 16-bit PCM WAV
+            const numChannels=1;
+            const sampleRate=16000;
+            const length=Math.round(audioBuf.length*sampleRate/audioBuf.sampleRate);
+            const offline=new OfflineAudioContext(numChannels,length,sampleRate);
+            const source=offline.createBufferSource();
+            source.buffer=audioBuf;
+            source.connect(offline.destination);
+            source.start();
+            const rendered=await offline.startRendering();
+            const pcm=rendered.getChannelData(0);
+            // Encode as WAV
+            const wav=encodeWav(pcm,sampleRate);
+            const res=await fetch('/files/'+fid+'/transcribe',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'audio/wav'},body:wav});
+            const d=await res.json();
+            if(!res.ok)throw new Error(d.error||'Error de transcripción');
+            return d.text||'';
+        }
+        function encodeWav(samples,sampleRate){
+            const bitsPerSample=16;
+            const numChannels=1;
+            const byteRate=sampleRate*numChannels*bitsPerSample/8;
+            const blockAlign=numChannels*bitsPerSample/8;
+            const dataSize=samples.length*blockAlign;
+            const buffer=new ArrayBuffer(44+dataSize);
+            const v=new DataView(buffer);
+            const w=(o,n)=>v.setUint16(o,n,true);
+            const wl=(o,n)=>v.setUint32(o,n,true);
+            v.setUint8(0,0x52);v.setUint8(1,0x49);v.setUint8(2,0x46);v.setUint8(3,0x46); // RIFF
+            wl(4,36+dataSize);
+            v.setUint8(8,0x57);v.setUint8(9,0x41);v.setUint8(10,0x56);v.setUint8(11,0x45); // WAVE
+            v.setUint8(12,0x66);v.setUint8(13,0x6d);v.setUint8(14,0x74);v.setUint8(15,0x20); // fmt
+            wl(16,16);w(20,1);w(22,numChannels);wl(24,sampleRate);wl(28,byteRate);w(32,blockAlign);w(34,bitsPerSample);
+            v.setUint8(36,0x64);v.setUint8(37,0x61);v.setUint8(38,0x74);v.setUint8(39,0x61); // data
+            wl(40,dataSize);
+            for(let i=0;i<samples.length;i++){
+                const s=Math.max(-1,Math.min(1,samples[i]));
+                const val=s<0?s*0x8000:s*0x7FFF;
+                w(44+i*2,val);
+            }
+            return new Blob([buffer],{type:'audio/wav'});
         }
         let myPrivacySettings={read_receipts:true,online_status:'all',last_seen_visibility:'all',allow_buzz:true};
         let ephemeralSeconds=null;
