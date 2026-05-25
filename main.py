@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PollDB, PollOptionDB, PollVoteDB, ReminderDB, PushSubscriptionDB, engine, Base
+from database import SessionLocal, MessageDB, UserDB, ChatDB, RoomDB, RoomMemberDB, BlockedUserDB, ScheduledMessageDB, FileDB, ReactionDB, PollDB, PollOptionDB, PollVoteDB, ReminderDB, PushSubscriptionDB, InviteDB, engine, Base
 import bcrypt
 import jwt
 from pydantic import BaseModel
@@ -306,6 +306,76 @@ async def join_room(room_id: int, req: Request):
         if not existing:
             member = RoomMemberDB(room_id=room_id, user_id=user["id"])
             db.add(member)
+            db.commit()
+        return {"id": room.id, "name": room.name}
+    finally:
+        db.close()
+
+
+# ─── Invite links ───
+@app.post("/rooms/{room_id}/invite")
+async def create_invite(room_id: int, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        room = db.query(RoomDB).filter(RoomDB.id == room_id).first()
+        if not room:
+            return JSONResponse({"error": "Sala no encontrada"}, status_code=404)
+        member = db.query(RoomMemberDB).filter(
+            RoomMemberDB.room_id == room_id, RoomMemberDB.user_id == user["id"]
+        ).first()
+        if not member:
+            return JSONResponse({"error": "No sos miembro"}, status_code=403)
+        import uuid
+        code = uuid.uuid4().hex[:12]
+        invite = InviteDB(room_id=room_id, code=code, created_by=user["id"])
+        db.add(invite)
+        db.commit()
+        db.refresh(invite)
+        return {"code": code, "room_id": room_id, "room_name": room.name}
+    finally:
+        db.close()
+
+@app.get("/invite/{code}")
+async def get_invite(code: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        invite = db.query(InviteDB).filter(InviteDB.code == code).first()
+        if not invite:
+            return JSONResponse({"error": "Invitación no válida"}, status_code=404)
+        room = db.query(RoomDB).filter(RoomDB.id == invite.room_id).first()
+        return {"room_id": invite.room_id, "room_name": room.name if room else "Desconocido", "code": code}
+    finally:
+        db.close()
+
+@app.post("/invite/{code}/join")
+async def join_via_invite(code: str, req: Request):
+    token = req.headers.get("authorization", "").replace("Bearer ", "")
+    user = get_token_user(token)
+    if not user:
+        return JSONResponse({"error": "No autorizado"}, status_code=401)
+    db = SessionLocal()
+    try:
+        invite = db.query(InviteDB).filter(InviteDB.code == code).first()
+        if not invite:
+            return JSONResponse({"error": "Invitación no válida"}, status_code=404)
+        room = db.query(RoomDB).filter(RoomDB.id == invite.room_id).first()
+        if not room:
+            return JSONResponse({"error": "Sala no encontrada"}, status_code=404)
+        existing = db.query(RoomMemberDB).filter(
+            RoomMemberDB.room_id == invite.room_id, RoomMemberDB.user_id == user["id"]
+        ).first()
+        if not existing:
+            member = RoomMemberDB(room_id=invite.room_id, user_id=user["id"])
+            db.add(member)
+            invite.use_count += 1
             db.commit()
         return {"id": room.id, "name": room.name}
     finally:

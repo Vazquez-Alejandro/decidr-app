@@ -190,4 +190,18 @@ class PushSubscriptionDB(Base):
     user = relationship("UserDB")
 
 
+class InviteDB(Base):
+    __tablename__ = "invites"
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"))
+    code = Column(String, unique=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    max_uses = Column(Integer, default=0)
+    use_count = Column(Integer, default=0)
+    room = relationship("RoomDB")
+    creator = relationship("UserDB", foreign_keys=[created_by])
+
+
 Base.metadata.create_all(bind=engine)
